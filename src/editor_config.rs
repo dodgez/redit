@@ -42,12 +42,14 @@ impl EditorConfig {
     }
 
     pub fn draw<W: Write>(&self, stdout: &mut W) -> std::io::Result<()> {
+        let max_gutter_size = std::primitive::f64::log10((self.row_offset + self.screen_rows) as f64) as usize;
+
         for y in self.row_offset..self.row_offset + self.screen_rows {
+            let gutter_size = std::primitive::f64::log10(if y == 0 {1} else {y} as f64) as usize;
+            stdout.write_all(format!("{}{}|", y, " ".repeat(max_gutter_size - gutter_size)).as_bytes());
             if y >= self.rows.len() {
                 if self.rows.is_empty() && y == self.row_offset {
                     stdout.write_all(b"Rudit -- version 0.1.0")?;
-                } else {
-                    stdout.write_all(b"~")?;
                 }
             } else {
                 let row = self.rows.get(y).unwrap();
