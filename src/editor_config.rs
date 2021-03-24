@@ -110,6 +110,28 @@ impl EditorConfig {
         (self.cx, self.cy)
     }
 
+    pub fn handle_char(&mut self, c: char) {
+        let row_index = self.cy as usize + self.row_offset;
+        let mut col_index = (self.cx - self.left_gutter_size) as usize;
+
+        let mut new_line = self
+            .rows
+            .get(self.cy as usize + self.row_offset)
+            .unwrap_or(&"".to_string())
+            .clone();
+        if col_index >= new_line.len() {
+            new_line = new_line.clone() + &" ".repeat(col_index - new_line.len());
+            col_index = new_line.len() - 1;
+        }
+        new_line.insert(col_index, c);
+
+        if self.rows.len() <= row_index {
+            self.rows.resize(row_index + 1, "".to_string());
+        }
+        self.rows[row_index] = new_line;
+        self.move_cursor(1, 0);
+    }
+
     fn calculate_gutter(row_offset: usize, screen_rows: usize) -> u16 {
         1 + std::primitive::f32::log10((row_offset + screen_rows) as f32) as u16
     }

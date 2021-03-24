@@ -77,10 +77,9 @@ pub fn main() -> std::io::Result<()> {
                 e.resize(width.into(), height.into());
             }
             Event::Key(event) => {
-                if event.code == KeyCode::Char('q') && event.modifiers == KeyModifiers::CONTROL {
+                if event.code == KeyCode::Esc {
                     break;
-                }
-                if event.modifiers == KeyModifiers::CONTROL {
+                } else if event.modifiers == KeyModifiers::CONTROL {
                     match event.code {
                         KeyCode::Char('c') => {
                             continue;
@@ -97,10 +96,12 @@ pub fn main() -> std::io::Result<()> {
                         KeyCode::Char('m') => {
                             continue;
                         }
+                        KeyCode::Char('q') => {
+                            break;
+                        }
                         _ => {}
                     }
-                }
-                if event.modifiers == KeyModifiers::NONE {
+                } else if event.modifiers == KeyModifiers::NONE {
                     match event.code {
                         KeyCode::Left => {
                             move_cursor(&mut stdout, &mut e, -1, 0);
@@ -114,11 +115,13 @@ pub fn main() -> std::io::Result<()> {
                         KeyCode::Down => {
                             move_cursor(&mut stdout, &mut e, 0, 1);
                         }
+                        KeyCode::Char(c) => {
+                            e.handle_char(c);
+                            let new_pos = e.get_cursor();
+                            execute!(stdout, MoveTo(new_pos.0, new_pos.1)).unwrap();
+                        }
                         _ => {}
                     }
-                }
-                if event.code == KeyCode::Esc {
-                    break;
                 }
             }
             _ => {}
