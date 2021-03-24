@@ -10,7 +10,7 @@ pub struct EditorConfig {
     cx: usize,
     cy: usize,
     row_offset: usize,
-    rows: Vec::<String>,
+    rows: Vec<String>,
     screen_cols: usize,
     screen_rows: usize,
 }
@@ -33,7 +33,9 @@ impl EditorConfig {
             let mut temp = String::new();
             let n = reader.read_line(&mut temp)?;
             self.rows.push(temp);
-            if n == 0 { break; }
+            if n == 0 {
+                break;
+            }
         }
 
         Ok(())

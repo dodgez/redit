@@ -1,9 +1,12 @@
 use clap::{App, Arg};
 use crossterm::{
-    cursor::*,
-    event::*,
+    cursor::MoveTo,
+    event::{read, Event, KeyCode, KeyModifiers},
     execute,
-    terminal::*,
+    terminal::{
+        disable_raw_mode, enable_raw_mode, size, Clear, ClearType, EnterAlternateScreen,
+        LeaveAlternateScreen,
+    },
 };
 
 mod editor_config;
