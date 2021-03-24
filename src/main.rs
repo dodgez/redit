@@ -1,14 +1,14 @@
 use clap::{App, Arg};
+use crossterm::{
+    cursor::*,
+    event::*,
+    execute,
+    terminal::*,
+};
 
 mod editor_config;
 
 pub fn main() -> std::io::Result<()> {
-    stderrlog::new()
-        .module(module_path!())
-        .show_module_names(true)
-        .init()
-        .expect("Failed to initialize stderrlog");
-
     let matches = App::new("Rudit")
         .version("0.1.0")
         .author("Zachary Dodge")
@@ -17,23 +17,51 @@ pub fn main() -> std::io::Result<()> {
         .get_matches();
 
     // let mut ps = SyntaxSet::load_defaults_newlines().into_builder();
-    // if ps
-    //     .add_from_folder(std::path::Path::new("syntaxes"), true)
-    //     .is_err()
-    // {
-    //     warn!("Failed to load syntax folder at ./syntaxes");
-    // }
+    // ps.add_from_folder(std::path::Path::new("syntaxes"), true).unwrap();
     // let ps = ps.build();
-
     // let theme = &ThemeSet::load_defaults().themes["Solarized (light)"];
 
-    let mut e = editor_config::EditorConfig::new(25, 80);
+    let initial_size = size().unwrap();
+    let mut e = editor_config::EditorConfig::new(initial_size.1.into(), initial_size.0.into());
 
     if let Some(file) = matches.value_of("FILE") {
         e.open(&file)?;
     }
 
-    e.draw(&mut std::io::stdout())?;
+    let mut stdout = std::io::stdout();
+    execute!(stdout, EnterAlternateScreen).unwrap();
+
+    enable_raw_mode().unwrap();
+
+    e.draw(&mut stdout)?;
+
+    loop {
+        let event = read().unwrap();
+
+        match event {
+            Event::Resize(width, height) => {
+                e.resize(width.into(), height.into());
+            }
+            Event::Key(event) => {
+                if event.code == KeyCode::Char('c') && event.modifiers == KeyModifiers::CONTROL {
+                    continue;
+                }
+                if event.code == KeyCode::Char('q') && event.modifiers == KeyModifiers::CONTROL {
+                    break;
+                }
+                if event.code == KeyCode::Esc {
+                    break;
+                }
+            }
+            _ => {}
+        }
+
+        execute!(stdout, Clear(ClearType::CurrentLine), MoveTo(0, 0)).unwrap();
+        e.draw(&mut stdout)?;
+    }
+
+    disable_raw_mode().unwrap();
+    execute!(stdout, LeaveAlternateScreen).unwrap();
 
     Ok(())
 }
