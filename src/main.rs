@@ -3,11 +3,13 @@ use crossterm::{
     cursor::{MoveTo, RestorePosition, SavePosition},
     event::{read, Event, KeyCode, KeyModifiers},
     execute,
+    style::{Color, SetBackgroundColor, SetForegroundColor},
     terminal::{
         disable_raw_mode, enable_raw_mode, size, Clear, ClearType, EnterAlternateScreen,
         LeaveAlternateScreen,
     },
 };
+use syntect::highlighting::{Color as SynColor, ThemeSet};
 
 mod editor_config;
 
@@ -32,7 +34,19 @@ pub fn main() -> std::io::Result<()> {
     // let mut ps = SyntaxSet::load_defaults_newlines().into_builder();
     // ps.add_from_folder(std::path::Path::new("syntaxes"), true).unwrap();
     // let ps = ps.build();
-    // let theme = &ThemeSet::load_defaults().themes["Solarized (light)"];
+    let theme = &ThemeSet::load_defaults().themes["Solarized (dark)"];
+    let background_color = theme.settings.background.unwrap_or(SynColor::BLACK);
+    let background_color = Color::Rgb {
+        r: background_color.r,
+        g: background_color.g,
+        b: background_color.b,
+    };
+    let foreground_color = theme.settings.foreground.unwrap_or(SynColor::WHITE);
+    let foreground_color = Color::Rgb {
+        r: foreground_color.r,
+        g: foreground_color.g,
+        b: foreground_color.b,
+    };
 
     let initial_size = size().unwrap();
     let mut e = editor_config::EditorConfig::new(initial_size.1.into(), initial_size.0.into());
@@ -42,11 +56,18 @@ pub fn main() -> std::io::Result<()> {
     }
 
     let mut stdout = std::io::stdout();
-    execute!(stdout, EnterAlternateScreen).unwrap();
+    execute!(
+        stdout,
+        EnterAlternateScreen,
+        SetBackgroundColor(background_color),
+        SetForegroundColor(foreground_color)
+    )
+    .unwrap();
 
     enable_raw_mode().unwrap();
 
     e.draw(&mut stdout)?;
+    move_cursor(&mut stdout, &mut e, 0, 0);
 
     loop {
         let event = read().unwrap();
