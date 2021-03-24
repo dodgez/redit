@@ -1,0 +1,17 @@
+[package]
+name = "rudit"
+version = "0.1.0"
+authors = ["dodgez <zacharysdodge@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+clap = "2.33.3"
+crossterm = "0.19.0"
+log = "0.4.14"
+stderrlog = "0.5.1"
+syntect = "4.5.0"
+
+[dev-dependencies]
+tempfile = "3.2.0"
