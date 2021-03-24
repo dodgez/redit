@@ -7,8 +7,9 @@ use std::path::Path;
 
 #[derive(Default)]
 pub struct EditorConfig {
-    cx: usize,
-    cy: usize,
+    cx: u16,
+    cy: u16,
+    left_gutter_size: u16,
     row_offset: usize,
     rows: Vec<String>,
     screen_cols: usize,
@@ -20,6 +21,7 @@ impl EditorConfig {
         EditorConfig {
             screen_rows: rows,
             screen_cols: cols,
+            left_gutter_size: Self::calculate_gutter(0, rows),
             ..EditorConfig::default()
         }
     }
@@ -42,11 +44,17 @@ impl EditorConfig {
     }
 
     pub fn draw<W: Write>(&self, stdout: &mut W) -> std::io::Result<()> {
-        let max_gutter_size = std::primitive::f64::log10((self.row_offset + self.screen_rows) as f64) as usize;
-
         for y in self.row_offset..self.row_offset + self.screen_rows {
-            let gutter_size = std::primitive::f64::log10(if y == 0 {1} else {y} as f64) as usize;
-            stdout.write_all(format!("{}{}|", y, " ".repeat(max_gutter_size - gutter_size)).as_bytes());
+            let gutter_size = std::primitive::f32::log10(if y == 0 { 1 } else { y } as f32) as u16;
+            // left_gutter - 1 because of pipe char
+            stdout.write_all(
+                format!(
+                    "{}{}|",
+                    y,
+                    " ".repeat((self.left_gutter_size - gutter_size - 1) as usize)
+                )
+                .as_bytes(),
+            );
             if y >= self.rows.len() {
                 if self.rows.is_empty() && y == self.row_offset {
                     stdout.write_all(b"Rudit -- version 0.1.0")?;
@@ -69,17 +77,40 @@ impl EditorConfig {
         Ok(())
     }
 
-    pub fn scroll(&mut self) {
-        if (self.cy < self.row_offset) {
-            self.row_offset = self.cy;
-        }
-        if (self.cy >= self.row_offset + self.screen_rows) {
-            self.row_offset = self.cy - self.screen_rows + 1;
-        }
-    }
-
     pub fn resize(&mut self, width: usize, height: usize) {
         self.screen_cols = width;
         self.screen_rows = height;
+        self.left_gutter_size = Self::calculate_gutter(self.row_offset, self.screen_rows);
+    }
+
+    pub fn move_cursor(&mut self, dx: i16, dy: i16) -> (u16, u16) {
+        let mut cx = self.cx as i16 + dx;
+        let mut cy = self.cy as i16 + dy;
+
+        if cx >= self.screen_cols as i16 {
+            cx = self.screen_cols as i16 - 1;
+        }
+        if cx <= self.left_gutter_size as i16 {
+            cx = self.left_gutter_size as i16 + 1;
+        }
+
+        if cy >= self.screen_rows as i16 {
+            cy = self.screen_rows as i16 - 1;
+        }
+        if cy < 0 {
+            cy = 0;
+        }
+
+        self.cx = cx as u16;
+        self.cy = cy as u16;
+        self.get_cursor()
+    }
+
+    pub fn get_cursor(&self) -> (u16, u16) {
+        (self.cx, self.cy)
+    }
+
+    fn calculate_gutter(row_offset: usize, screen_rows: usize) -> u16 {
+        1 + std::primitive::f32::log10((row_offset + screen_rows) as f32) as u16
     }
 }

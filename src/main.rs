@@ -1,6 +1,6 @@
 use clap::{App, Arg};
 use crossterm::{
-    cursor::MoveTo,
+    cursor::{MoveTo, RestorePosition, SavePosition},
     event::{read, Event, KeyCode, KeyModifiers},
     execute,
     terminal::{
@@ -10,6 +10,16 @@ use crossterm::{
 };
 
 mod editor_config;
+
+fn move_cursor(
+    stdout: &mut std::io::Stdout,
+    editor_config: &mut editor_config::EditorConfig,
+    dx: i16,
+    dy: i16,
+) {
+    let new_pos = editor_config.move_cursor(dx, dy);
+    execute!(stdout, MoveTo(new_pos.0, new_pos.1)).unwrap();
+}
 
 pub fn main() -> std::io::Result<()> {
     let matches = App::new("Rudit")
@@ -51,11 +61,38 @@ pub fn main() -> std::io::Result<()> {
                 }
                 if event.modifiers == KeyModifiers::CONTROL {
                     match event.code {
-                        KeyCode::Char('c') => { continue; }
-                        KeyCode::Char('s') => { continue; }
-                        KeyCode::Char('z') => { continue; }
-                        KeyCode::Char('v') => { continue; }
-                        KeyCode::Char('m') => { continue; }
+                        KeyCode::Char('c') => {
+                            continue;
+                        }
+                        KeyCode::Char('s') => {
+                            continue;
+                        }
+                        KeyCode::Char('z') => {
+                            continue;
+                        }
+                        KeyCode::Char('v') => {
+                            continue;
+                        }
+                        KeyCode::Char('m') => {
+                            continue;
+                        }
+                        _ => {}
+                    }
+                }
+                if event.modifiers == KeyModifiers::NONE {
+                    match event.code {
+                        KeyCode::Left => {
+                            move_cursor(&mut stdout, &mut e, -1, 0);
+                        }
+                        KeyCode::Right => {
+                            move_cursor(&mut stdout, &mut e, 1, 0);
+                        }
+                        KeyCode::Up => {
+                            move_cursor(&mut stdout, &mut e, 0, -1);
+                        }
+                        KeyCode::Down => {
+                            move_cursor(&mut stdout, &mut e, 0, 1);
+                        }
                         _ => {}
                     }
                 }
@@ -66,8 +103,15 @@ pub fn main() -> std::io::Result<()> {
             _ => {}
         }
 
-        execute!(stdout, Clear(ClearType::CurrentLine), MoveTo(0, 0)).unwrap();
+        execute!(
+            stdout,
+            SavePosition,
+            Clear(ClearType::CurrentLine),
+            MoveTo(0, 0)
+        )
+        .unwrap();
         e.draw(&mut stdout)?;
+        execute!(stdout, RestorePosition).unwrap();
     }
 
     disable_raw_mode().unwrap();
