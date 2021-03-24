@@ -46,11 +46,18 @@ pub fn main() -> std::io::Result<()> {
                 e.resize(width.into(), height.into());
             }
             Event::Key(event) => {
-                if event.code == KeyCode::Char('c') && event.modifiers == KeyModifiers::CONTROL {
-                    continue;
-                }
                 if event.code == KeyCode::Char('q') && event.modifiers == KeyModifiers::CONTROL {
                     break;
+                }
+                if event.modifiers == KeyModifiers::CONTROL {
+                    match event.code {
+                        KeyCode::Char('c') => { continue; }
+                        KeyCode::Char('s') => { continue; }
+                        KeyCode::Char('z') => { continue; }
+                        KeyCode::Char('v') => { continue; }
+                        KeyCode::Char('m') => { continue; }
+                        _ => {}
+                    }
                 }
                 if event.code == KeyCode::Esc {
                     break;
