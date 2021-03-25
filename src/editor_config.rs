@@ -5,6 +5,15 @@ use std::io::prelude::*;
 use std::io::BufReader;
 use std::path::Path;
 
+pub enum Movement {
+    BegFile,
+    EndFile,
+    Home,
+    End,
+    Absolute(usize, usize),
+    Relative(isize, isize),
+}
+
 #[derive(Default)]
 pub struct EditorConfig {
     col_offset: usize,
@@ -19,11 +28,12 @@ pub struct EditorConfig {
 
 impl EditorConfig {
     pub fn new(rows: usize, cols: usize) -> Self {
+        let left_gutter_size = Self::calculate_gutter(0, rows, 1);
         EditorConfig {
-            left_gutter_size: Self::calculate_gutter(0, rows, 1),
+            left_gutter_size,
             rows: vec!["Rudit version 0.1.0 - New file".to_string()],
             screen_rows: rows,
-            screen_cols: cols,
+            screen_cols: cols - left_gutter_size,
             ..EditorConfig::default()
         }
     }
@@ -42,8 +52,7 @@ impl EditorConfig {
             }
         }
 
-        self.left_gutter_size =
-            Self::calculate_gutter(self.row_offset, self.screen_rows, self.rows.len());
+        self.update_gutter();
 
         Ok(())
     }
@@ -52,31 +61,29 @@ impl EditorConfig {
         for y in
             self.row_offset..std::cmp::min(self.rows.len(), self.row_offset + self.screen_rows + 1)
         {
-            let gutter_size =
-                std::primitive::f32::log10(if y == 0 { 1 } else { y } as f32) as usize;
-            // left_gutter - 1 because of pipe char
+            let gutter_size = (if y < 2 { 2 } else { 1 + y } as f32).log10().ceil() as usize;
             stdout.write_all(
                 format!(
                     "{}{}|",
                     y,
-                    " ".repeat(self.left_gutter_size - gutter_size - 1)
+                    " ".repeat(self.left_gutter_size - gutter_size - 1) // Get difference not including separator
                 )
                 .as_bytes(),
             );
-            let row = self.rows.get(y).unwrap();
+            let row = self.rows.get(y).unwrap().trim_end(); // Safe because of array bounds
             let col_split = if (self.col_offset >= row.len()) {
                 ""
             } else {
                 row.split_at(self.col_offset).1
             };
             let mut len = col_split.len();
-            if len > self.screen_cols - self.left_gutter_size {
-                len = self.screen_cols - self.left_gutter_size;
+            if len > self.screen_cols {
+                len = self.screen_cols;
             }
-            stdout.write_all(col_split.split_at(len).0.trim_end().as_bytes())?;
+            stdout.write_all(col_split.split_at(len).0.as_bytes())?;
 
             stdout.write_all(b"\x1b[K")?;
-            if y < self.row_offset + self.screen_rows {
+            if y < self.row_offset + self.screen_rows { // Don't append new \r\n when at the very bottom of the window
                 stdout.write_all(b"\r\n");
             }
         }
@@ -85,120 +92,122 @@ impl EditorConfig {
     }
 
     pub fn resize(&mut self, width: usize, height: usize) {
-        self.screen_cols = width;
         self.screen_rows = height;
         self.left_gutter_size =
             Self::calculate_gutter(self.row_offset, self.screen_rows, self.rows.len());
+        self.screen_cols = width - self.left_gutter_size;
+        self.scroll();
     }
 
-    pub fn move_cursor(&mut self, dx: isize, dy: isize) {
-        let mut cx = self.cx as isize + dx;
-        let mut cy = self.cy as isize + dy;
-        let mut line = self.rows.get(self.row_offset + self.cy).unwrap();
+    pub fn get_rel_cursor(&self) -> (u16, u16) {
+        ((self.cx - self.col_offset + self.left_gutter_size) as u16, (self.cy - self.row_offset) as u16)
+    }
 
-        if cy >= 0 && cy as usize >= self.rows.len() - self.row_offset {
-            cy = self.rows.len() as isize - self.row_offset as isize - 1;
-        }
-        if cy >= 0 && cy as usize > self.screen_rows {
-            cy = self.screen_rows as isize;
-            self.row_offset += 1;
-        }
-        if cy < 0 {
-            if self.row_offset as isize + cy >= 0 {
-                self.row_offset = (self.row_offset as isize + cy) as usize;
+    pub fn move_cursor(&mut self, pos: Movement) {
+        match pos {
+            Movement::BegFile => {
+                self.cx = 0;
+                self.cy = 0;
+                self.row_offset = 0;
+                self.col_offset = 0;
             }
-            cy = 0;
-        }
-
-        line = self.rows.get(self.row_offset + cy as usize).unwrap();
-        let mut line_len = line.len() + self.left_gutter_size;
-        if cx >= 0 && cx as usize + self.col_offset > line_len {
-            if self.cx + self.col_offset == line_len && cy < self.screen_rows as isize {
-                cx = self.left_gutter_size as isize + 1;
-                cy += 1
-            } else {
-                cx = line_len as isize - self.col_offset as isize;
+            Movement::Home => {
+                self.cx = 0;
+                self.col_offset = 0;
             }
-        }
-        if cx >= 0 && cx as usize > self.screen_cols {
-            self.col_offset = std::cmp::min(self.col_offset + cx as usize, line_len)
-                - std::cmp::min(self.screen_cols, line_len);
-            cx = self.screen_cols as isize;
-        }
-        if cx <= self.left_gutter_size as isize {
-            if self.col_offset > 0 {
-                let cx_diff = self.left_gutter_size as isize - cx + 1;
-                if (self.col_offset as isize - cx_diff) < 0 {
-                    self.col_offset = 0;
-                } else {
-                    self.col_offset = (self.col_offset as isize - cx_diff) as usize;
+            Movement::End => {
+                if let Some(line) = self.rows.get(self.cy) {
+                    self.cx = if line.is_empty() {0} else {line.trim_end().len()};
                 }
-                cx = self.left_gutter_size as isize + 1;
-            } else if cy > 0 {
-                cy -= 1;
-                line = self.rows.get(self.row_offset + cy as usize).unwrap();
-                line_len = line.len() + self.left_gutter_size;
-                if line_len > self.screen_cols {
-                    self.col_offset = line_len - self.screen_cols;
-                    cx = self.screen_cols as isize;
-                } else {
-                    cx = line_len as isize;
-                };
-            } else {
-                cx = self.left_gutter_size as isize + 1;
             }
+            // Up
+            Movement::Relative(0, dy) if dy < 0 => {
+                let new_cy = self.cy as isize + dy;
+                if new_cy >= 0 {
+                    if let Some(line) = self.rows.get(new_cy as usize) {
+                        self.cy = new_cy as usize;
+                        if self.cx > line.trim_end().len() {
+                            self.move_cursor(Movement::End);
+                        }
+                    }
+                }
+            }
+            // Down
+            Movement::Relative(0, dy) if dy > 0 => {
+                if let Some(line) = self.rows.get(self.cy + dy as usize) {
+                    self.cy += dy as usize;
+                    if self.cx > line.trim_end().len() {
+                        self.move_cursor(Movement::End);
+                    }
+                }
+            }
+            // Left
+            Movement::Relative(dx, 0) if dx < 0 => {
+                if self.cx as isize + dx < 0 {
+                    if self.cy > 0 {
+                        self.move_cursor(Movement::Relative(0, -1));
+                        self.move_cursor(Movement::End);
+                    }
+                } else {
+                    self.cx = (self.cx as isize + dx) as usize;
+                }
+            }
+            // Right
+            Movement::Relative(dx, 0) if dx > 0 => {
+                if let Some(line) = self.rows.get(self.cy) {
+                    if self.cx + dx as usize > line.trim_end().len() {
+                        if self.cy < self.rows.len() - 1 {
+                            self.move_cursor(Movement::Relative(0, 1));
+                            self.move_cursor(Movement::Home);
+                        }
+                    } else {
+                        self.cx += dx as usize;
+                    }
+                }
+            }
+            _ => {}
         }
 
+        self.scroll();
+        self.update_gutter();
+    }
+
+    pub fn write_char(&mut self, c: char) {
+        if let Some(mut line) = self.rows.get(self.cy).map(|l| l.to_string()) {
+            line.insert(self.cx, c);
+
+            self.rows[self.cy] = line;
+            self.move_cursor(Movement::Relative(1, 0));
+        }
+    }
+
+    fn update_gutter(&mut self) {
         let new_gutter = Self::calculate_gutter(self.row_offset, self.screen_rows, self.rows.len());
-
-        self.cx = (cx + new_gutter as isize - self.left_gutter_size as isize) as usize;
-        self.cy = cy as usize;
-
+        self.screen_cols = (self.screen_cols + self.left_gutter_size) - new_gutter;
         self.left_gutter_size = new_gutter;
     }
 
-    pub fn get_cursor(&self) -> (u16, u16) {
-        (self.cx as u16, self.cy as u16)
-    }
-
-    pub fn cursor_home(&mut self) {
-        self.move_cursor(
-            0 - self.cx as isize - self.col_offset as isize + self.left_gutter_size as isize + 1,
-            0,
-        );
-    }
-
-    pub fn cursor_end(&mut self) {
-        self.move_cursor(
-            self.rows.get(self.row_offset + self.cy).unwrap().len() as isize
-                - self.cx as isize
-                - self.col_offset as isize
-                + self.left_gutter_size as isize,
-            0,
-        );
-    }
-
-    pub fn handle_char(&mut self, c: char) {
-        let row_index = self.cy + self.row_offset;
-        let mut col_index = self.col_offset + (self.cx - self.left_gutter_size - 1);
-
-        let mut new_line = self.rows.get(self.cy + self.row_offset).unwrap().clone();
-        new_line.insert(col_index, c);
-
-        if self.rows.len() <= row_index {
-            self.rows.resize(row_index + 1, "".to_string());
+    fn scroll(&mut self) {
+        if self.cx < self.col_offset {
+            self.col_offset = self.cx;
         }
-        self.rows[row_index] = new_line;
-        self.move_cursor(1, 0);
+        if self.cx - self.col_offset > self.screen_cols {
+            self.col_offset = self.cx - self.screen_cols;
+        }
+        if self.cy < self.row_offset {
+            self.row_offset = self.cy;
+        }
+        if self.cy - self.row_offset > self.screen_rows {
+            self.row_offset = self.cy - self.screen_rows;
+        }
     }
 
     fn calculate_gutter(row_offset: usize, screen_rows: usize, rows: usize) -> usize {
+        // 1 to include pipe char and 1.0+ so that 10^n -> n+1
         1 + if screen_rows < rows - row_offset {
-            std::primitive::f32::floor(std::primitive::f32::log10(
-                (row_offset + screen_rows) as f32,
-            )) as usize
+            (1.0 + (row_offset + screen_rows) as f32).log10().ceil()
         } else {
-            std::primitive::f32::floor(std::primitive::f32::log10(rows as f32)) as usize
-        }
+            (1.0 + rows as f32).log10().ceil()
+        } as usize
     }
 }
