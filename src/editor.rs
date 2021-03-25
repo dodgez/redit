@@ -15,7 +15,7 @@ pub enum Movement {
 }
 
 #[derive(Default)]
-pub struct EditorConfig {
+pub struct Editor {
     col_offset: usize,
     cx: usize,
     cy: usize,
@@ -26,15 +26,15 @@ pub struct EditorConfig {
     screen_rows: usize,
 }
 
-impl EditorConfig {
+impl Editor {
     pub fn new(rows: usize, cols: usize) -> Self {
         let left_gutter_size = Self::calculate_gutter(0, rows, 1);
-        EditorConfig {
+        Editor {
             left_gutter_size,
             rows: vec!["Rudit version 0.1.0 - New file".to_string()],
             screen_rows: rows,
             screen_cols: cols - left_gutter_size,
-            ..EditorConfig::default()
+            ..Editor::default()
         }
     }
 

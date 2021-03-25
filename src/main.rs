@@ -11,7 +11,7 @@ use crossterm::{
 };
 use syntect::highlighting::{Color as SynColor, ThemeSet};
 
-mod editor_config;
+mod editor;
 
 fn edit(file: Option<&str>) -> crossterm::Result<()> {
     // let mut ps = SyntaxSet::load_defaults_newlines().into_builder();
@@ -32,7 +32,7 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
     };
 
     let initial_size = size()?;
-    let mut e = editor_config::EditorConfig::new(initial_size.1.into(), initial_size.0.into());
+    let mut e = editor::Editor::new(initial_size.1.into(), initial_size.0.into());
     if let Some(file) = file {e.open(&file)?};
 
     let mut stdout = std::io::stdout();
@@ -46,7 +46,7 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
     enable_raw_mode()?;
 
     e.draw(&mut stdout)?;
-    e.move_cursor(editor_config::Movement::BegFile);
+    e.move_cursor(editor::Movement::BegFile);
     let cur_pos = e.get_rel_cursor();
     execute!(stdout, MoveTo(cur_pos.0, cur_pos.1))?;
 
@@ -90,22 +90,22 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                 } else if event.modifiers == KeyModifiers::NONE {
                     match event.code {
                         KeyCode::Left => {
-                            e.move_cursor(editor_config::Movement::Relative(-1, 0));
+                            e.move_cursor(editor::Movement::Relative(-1, 0));
                         }
                         KeyCode::Right => {
-                            e.move_cursor(editor_config::Movement::Relative(1, 0));
+                            e.move_cursor(editor::Movement::Relative(1, 0));
                         }
                         KeyCode::Up => {
-                            e.move_cursor(editor_config::Movement::Relative(0, -1));
+                            e.move_cursor(editor::Movement::Relative(0, -1));
                         }
                         KeyCode::Down => {
-                            e.move_cursor(editor_config::Movement::Relative(0, 1));
+                            e.move_cursor(editor::Movement::Relative(0, 1));
                         }
                         KeyCode::Home => {
-                            e.move_cursor(editor_config::Movement::Home);
+                            e.move_cursor(editor::Movement::Home);
                         }
                         KeyCode::End => {
-                            e.move_cursor(editor_config::Movement::End);
+                            e.move_cursor(editor::Movement::End);
                         }
                         KeyCode::Char(c) => {
                             e.write_char(c);
@@ -145,8 +145,7 @@ pub fn main() -> std::io::Result<()> {
         .get_matches();
 
     if let Err(e) = edit(matches.value_of("FILE")) {
-        use std::io::prelude::*;
-        writeln!(std::io::stderr(), "{}", e);
+        eprintln!("{}", e);
     }
 
     Ok(())
