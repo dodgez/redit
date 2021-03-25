@@ -3,7 +3,7 @@
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::BufReader;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub enum Movement {
     BegFile,
@@ -52,9 +52,11 @@ impl Line {
 
 #[derive(Default)]
 pub struct Editor {
+    bottom_gutter_size: usize,
     col_offset: usize,
     cx: usize,
     cy: usize,
+    file_path: Option<PathBuf>,
     left_gutter_size: usize,
     render_opts: RenderConfig,
     row_offset: usize,
@@ -73,21 +75,23 @@ fn convert_cx_to_rx(line: &Line, cx: usize, render_opts: &RenderConfig) -> usize
 
 impl Editor {
     pub fn new(rows: usize, cols: usize) -> Self {
-        let left_gutter_size = Self::calculate_gutter(0, rows, 1);
+        let bottom_gutter_size = Self::calculate_bottom_gutter();
+        let left_gutter_size = Self::calculate_left_gutter(0, rows, 1);
         Editor {
+            bottom_gutter_size,
             left_gutter_size,
-            rows: vec![Line::new("Rudit version 0.1.0:\tNew file".to_string())],
-            screen_rows: rows,
+            rows: vec![Line::new("Rudit version 0.1.0".to_string())],
+            screen_rows: rows - bottom_gutter_size,
             screen_cols: cols - left_gutter_size,
             ..Editor::default()
         }
     }
 
-    pub fn open(&mut self, file: &dyn AsRef<Path>) -> std::io::Result<()> {
-        let file = File::open(file)?;
+    pub fn open(&mut self, file_name: &dyn AsRef<Path>) -> std::io::Result<()> {
+        let file = File::open(file_name)?;
         let mut reader = BufReader::new(file);
         self.rows = vec![];
-
+        
         loop {
             let mut temp = String::new();
             let n = reader.read_line(&mut temp)?;
@@ -96,8 +100,13 @@ impl Editor {
                 break;
             }
         }
-
-        self.update_gutter();
+        
+        self.update_left_gutter();
+        let mut file_name = file_name.as_ref().to_path_buf();
+        if let Ok(path) = file_name.canonicalize() {
+            file_name = path;
+        }
+        self.file_path = Some(file_name);
 
         Ok(())
     }
@@ -106,11 +115,11 @@ impl Editor {
         for y in
             self.row_offset..std::cmp::min(self.rows.len(), self.row_offset + self.screen_rows + 1)
         {
-            let gutter_size = (if y < 2 { 2 } else { 1 + y } as f32).log10().ceil() as usize;
+            let gutter_size = (if y < 2 { 2 } else { 2 + y } as f32).log10().ceil() as usize; // 2+ so line numbers start at 1
             stdout.write_all(
                 format!(
                     "{}{}|",
-                    y,
+                    y + 1, // Line numbering starts at 1
                     " ".repeat(self.left_gutter_size - gutter_size - 1) // Get difference not including separator
                 )
                 .as_bytes(),
@@ -127,19 +136,39 @@ impl Editor {
             }
             stdout.write_all(col_split.split_at(len).0.as_bytes())?;
 
-            stdout.write_all(b"\x1b[K")?;
-            if y < self.row_offset + self.screen_rows { // Don't append new \r\n when at the very bottom of the window
-                stdout.write_all(b"\r\n");
-            }
+            stdout.write_all(b"\x1b[K")?; // Clear line
+            stdout.write_all(b"\r\n")?;
         }
+
+        // Force status bar to be at the bottom
+        for y in self.rows.len()..self.row_offset + self.screen_rows + 1 {
+            stdout.write_all(b"\x1b[K")?; // Clear line
+            stdout.write_all(b"\r\n")?;
+        }
+
+        // File status bar
+        stdout.write_all(b"\x1b[K")?;
+        let mut file_s = self.file_path.as_ref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_else(|| "[No Name]".to_string());
+        let status_start = "File: ";
+        let max_length = self.screen_cols + self.left_gutter_size - status_start.len() - 12; // 12 for line col status up to 4 chars each
+        if file_s.len() > max_length {
+            file_s = file_s.split_at(file_s.len() - max_length).1.to_string();
+        }
+        stdout.write_all(format!("{}{} L{}:C{}", status_start, file_s, self.cy + 1, self.rx).as_bytes())?;
+        stdout.write_all(b"\r\n")?;
+
+        // Message status bar
+        stdout.write_all(b"\x1b[K")?;
+        stdout.write_all(b"Message: [No Messages]")?;
 
         Ok(())
     }
 
     pub fn resize(&mut self, width: usize, height: usize) {
-        self.screen_rows = height;
+        let bottom_gutter_size = Self::calculate_bottom_gutter();
+        self.screen_rows = height - bottom_gutter_size;
         self.left_gutter_size =
-            Self::calculate_gutter(self.row_offset, self.screen_rows, self.rows.len());
+            Self::calculate_left_gutter(self.row_offset, self.screen_rows, self.rows.len());
         self.screen_cols = width - self.left_gutter_size;
         self.scroll();
     }
@@ -226,12 +255,11 @@ impl Editor {
         }
 
         self.scroll();
-        self.update_gutter();
+        self.update_left_gutter();
     }
 
     pub fn write_char(&mut self, c: char) {
         if let Some(line) = self.rows.get(self.cy) {
-            // panic!("Not implemented yet");
             let mut s = line.get_raw().to_string();
             s.insert(self.cx, c);
 
@@ -240,8 +268,8 @@ impl Editor {
         }
     }
 
-    fn update_gutter(&mut self) {
-        let new_gutter = Self::calculate_gutter(self.row_offset, self.screen_rows, self.rows.len());
+    fn update_left_gutter(&mut self) {
+        let new_gutter = Self::calculate_left_gutter(self.row_offset, self.screen_rows, self.rows.len());
         self.screen_cols = (self.screen_cols + self.left_gutter_size) - new_gutter;
         self.left_gutter_size = new_gutter;
     }
@@ -264,12 +292,16 @@ impl Editor {
         }
     }
 
-    fn calculate_gutter(row_offset: usize, screen_rows: usize, rows: usize) -> usize {
-        // 1 to include pipe char and 1.0+ so that 10^n -> n+1
+    fn calculate_left_gutter(row_offset: usize, screen_rows: usize, rows: usize) -> usize {
+        // 1 to include pipe char and 2.0+ so that 10^n -> n+1 and line numbers start at 1
         1 + if screen_rows < rows - row_offset {
-            (1.0 + (row_offset + screen_rows) as f32).log10().ceil()
+            (2.0 + (row_offset + screen_rows) as f32).log10().ceil()
         } else {
-            (1.0 + rows as f32).log10().ceil()
+            (2.0 + rows as f32).log10().ceil()
         } as usize
+    }
+
+    fn calculate_bottom_gutter() -> usize {
+        2
     }
 }

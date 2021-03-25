@@ -55,6 +55,7 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
 
         match event {
             Event::Resize(width, height) => {
+                execute!(stdout, Clear(ClearType::All))?;
                 e.resize(width.into(), height.into());
                 execute!(
                     stdout,
