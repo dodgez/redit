@@ -53,7 +53,6 @@ impl EditorConfig {
         {
             let gutter_size = std::primitive::f32::log10(if y == 0 { 1 } else { y } as f32) as u16;
             // left_gutter - 1 because of pipe char
-            // println!("{}, {}", self.left_gutter_size, gutter_size);
             stdout.write_all(
                 format!(
                     "{}{}|",
@@ -157,10 +156,10 @@ impl EditorConfig {
     }
 
     fn calculate_gutter(row_offset: usize, screen_rows: usize, rows: usize) -> u16 {
-        1 + if row_offset + screen_rows < rows - row_offset {
-            std::primitive::f32::log10((row_offset + screen_rows) as f32) as u16
+        1 + if screen_rows < rows - row_offset {
+            std::primitive::f32::floor(std::primitive::f32::log10((row_offset + screen_rows) as f32)) as u16
         } else {
-            std::primitive::f32::log10((rows - row_offset) as f32) as u16
+            std::primitive::f32::floor(std::primitive::f32::log10(rows as f32)) as u16
         }
     }
 }
