@@ -19,9 +19,10 @@ pub struct EditorConfig {
 impl EditorConfig {
     pub fn new(rows: usize, cols: usize) -> Self {
         EditorConfig {
+            left_gutter_size: Self::calculate_gutter(0, rows, 1),
+            rows: vec!["Rudit version 0.1.0 - New file".to_string()],
             screen_rows: rows,
             screen_cols: cols,
-            left_gutter_size: Self::calculate_gutter(0, rows),
             ..EditorConfig::default()
         }
     }
@@ -40,13 +41,19 @@ impl EditorConfig {
             }
         }
 
+        self.left_gutter_size =
+            Self::calculate_gutter(self.row_offset, self.screen_rows, self.rows.len());
+
         Ok(())
     }
 
     pub fn draw<W: Write>(&self, stdout: &mut W) -> std::io::Result<()> {
-        for y in self.row_offset..self.row_offset + self.screen_rows {
+        for y in
+            self.row_offset..std::cmp::min(self.rows.len(), self.row_offset + self.screen_rows + 1)
+        {
             let gutter_size = std::primitive::f32::log10(if y == 0 { 1 } else { y } as f32) as u16;
             // left_gutter - 1 because of pipe char
+            // println!("{}, {}", self.left_gutter_size, gutter_size);
             stdout.write_all(
                 format!(
                     "{}{}|",
@@ -55,21 +62,15 @@ impl EditorConfig {
                 )
                 .as_bytes(),
             );
-            if y >= self.rows.len() {
-                if self.rows.is_empty() && y == self.row_offset {
-                    stdout.write_all(b"Rudit -- version 0.1.0")?;
-                }
-            } else {
-                let row = self.rows.get(y).unwrap();
-                let mut len = row.len();
-                if len > self.screen_cols {
-                    len = self.screen_cols;
-                }
-                stdout.write_all(row.trim_end().as_bytes())?;
+            let row = self.rows.get(y).unwrap();
+            let mut len = row.len();
+            if len > self.screen_cols - self.left_gutter_size as usize {
+                len = self.screen_cols - self.left_gutter_size as usize;
             }
+            stdout.write_all(row.split_at(len).0.trim_end().as_bytes())?;
 
             stdout.write_all(b"\x1b[K")?;
-            if y < self.row_offset + self.screen_rows - 1 {
+            if y < self.row_offset + self.screen_rows {
                 stdout.write_all(b"\r\n");
             }
         }
@@ -80,49 +81,72 @@ impl EditorConfig {
     pub fn resize(&mut self, width: usize, height: usize) {
         self.screen_cols = width;
         self.screen_rows = height;
-        self.left_gutter_size = Self::calculate_gutter(self.row_offset, self.screen_rows);
+        self.left_gutter_size =
+            Self::calculate_gutter(self.row_offset, self.screen_rows, self.rows.len());
     }
 
-    pub fn move_cursor(&mut self, dx: i16, dy: i16) -> (u16, u16) {
+    pub fn move_cursor(&mut self, dx: i16, dy: i16) {
         let mut cx = self.cx as i16 + dx;
         let mut cy = self.cy as i16 + dy;
+        let mut line = self.rows.get(self.row_offset + self.cy as usize).unwrap();
 
-        if cx >= self.screen_cols as i16 {
-            cx = self.screen_cols as i16 - 1;
+        if cy >= 0 && cy as usize >= self.rows.len() - self.row_offset {
+            cy = (self.rows.len() - self.row_offset - 1) as i16;
+        }
+        if cy >= 0 && cy as usize > self.screen_rows {
+            cy = self.screen_rows as i16;
+            self.row_offset += 1;
+        }
+        if cy < 0 {
+            if self.row_offset as isize + cy as isize >= 0 {
+                self.row_offset = (self.row_offset as isize + cy as isize) as usize;
+            }
+            cy = 0;
+        }
+
+        line = self.rows.get(self.row_offset + cy as usize).unwrap();
+        let max_width = std::cmp::min(self.screen_cols, line.len() as usize + 2);
+        if cx >= 0 && cx as usize > max_width {
+            cx = max_width as i16;
         }
         if cx <= self.left_gutter_size as i16 {
             cx = self.left_gutter_size as i16 + 1;
         }
 
-        if cy >= self.screen_rows as i16 {
-            cy = self.screen_rows as i16 - 1;
-        }
-        if cy < 0 {
-            cy = 0;
-        }
-
         self.cx = cx as u16;
         self.cy = cy as u16;
-        self.get_cursor()
+        // TODO: fix bug where gutter size changes after cursor movement
+        self.left_gutter_size =
+            Self::calculate_gutter(self.row_offset, self.screen_rows, self.rows.len());
     }
 
     pub fn get_cursor(&self) -> (u16, u16) {
         (self.cx, self.cy)
     }
 
+    pub fn cursor_home(&mut self) {
+        self.move_cursor(0 - self.cx as i16, 0);
+    }
+
+    pub fn cursor_end(&mut self) {
+        self.move_cursor(
+            self.rows
+                .get(self.row_offset + self.cy as usize)
+                .unwrap_or(&"".to_string())
+                .len() as i16,
+            0,
+        );
+    }
+
     pub fn handle_char(&mut self, c: char) {
         let row_index = self.cy as usize + self.row_offset;
-        let mut col_index = (self.cx - self.left_gutter_size) as usize;
+        let mut col_index = (self.cx - self.left_gutter_size - 1) as usize;
 
         let mut new_line = self
             .rows
             .get(self.cy as usize + self.row_offset)
-            .unwrap_or(&"".to_string())
+            .unwrap()
             .clone();
-        if col_index >= new_line.len() {
-            new_line = new_line.clone() + &" ".repeat(col_index - new_line.len());
-            col_index = new_line.len() - 1;
-        }
         new_line.insert(col_index, c);
 
         if self.rows.len() <= row_index {
@@ -132,7 +156,11 @@ impl EditorConfig {
         self.move_cursor(1, 0);
     }
 
-    fn calculate_gutter(row_offset: usize, screen_rows: usize) -> u16 {
-        1 + std::primitive::f32::log10((row_offset + screen_rows) as f32) as u16
+    fn calculate_gutter(row_offset: usize, screen_rows: usize, rows: usize) -> u16 {
+        1 + if row_offset + screen_rows < rows - row_offset {
+            std::primitive::f32::log10((row_offset + screen_rows) as f32) as u16
+        } else {
+            std::primitive::f32::log10((rows - row_offset) as f32) as u16
+        }
     }
 }

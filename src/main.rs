@@ -1,6 +1,6 @@
 use clap::{App, Arg};
 use crossterm::{
-    cursor::{MoveTo, RestorePosition, SavePosition},
+    cursor::{Hide, MoveTo, RestorePosition, SavePosition, Show},
     event::{read, Event, KeyCode, KeyModifiers},
     execute,
     style::{Color, SetBackgroundColor, SetForegroundColor},
@@ -12,16 +12,6 @@ use crossterm::{
 use syntect::highlighting::{Color as SynColor, ThemeSet};
 
 mod editor_config;
-
-fn move_cursor(
-    stdout: &mut std::io::Stdout,
-    editor_config: &mut editor_config::EditorConfig,
-    dx: i16,
-    dy: i16,
-) {
-    let new_pos = editor_config.move_cursor(dx, dy);
-    execute!(stdout, MoveTo(new_pos.0, new_pos.1)).unwrap();
-}
 
 pub fn main() -> std::io::Result<()> {
     let matches = App::new("Rudit")
@@ -67,7 +57,9 @@ pub fn main() -> std::io::Result<()> {
     enable_raw_mode().unwrap();
 
     e.draw(&mut stdout)?;
-    move_cursor(&mut stdout, &mut e, 0, 0);
+    e.move_cursor(0, 0); // Force editor_config to adjust cursor position
+    let cur_pos = e.get_cursor();
+    execute!(stdout, MoveTo(cur_pos.0, cur_pos.1)).unwrap();
 
     loop {
         let event = read().unwrap();
@@ -75,6 +67,12 @@ pub fn main() -> std::io::Result<()> {
         match event {
             Event::Resize(width, height) => {
                 e.resize(width.into(), height.into());
+                execute!(
+                    stdout,
+                    SetBackgroundColor(background_color),
+                    SetForegroundColor(foreground_color)
+                )
+                .unwrap();
             }
             Event::Key(event) => {
                 if event.code == KeyCode::Esc {
@@ -104,21 +102,25 @@ pub fn main() -> std::io::Result<()> {
                 } else if event.modifiers == KeyModifiers::NONE {
                     match event.code {
                         KeyCode::Left => {
-                            move_cursor(&mut stdout, &mut e, -1, 0);
+                            e.move_cursor(-1, 0);
                         }
                         KeyCode::Right => {
-                            move_cursor(&mut stdout, &mut e, 1, 0);
+                            e.move_cursor(1, 0);
                         }
                         KeyCode::Up => {
-                            move_cursor(&mut stdout, &mut e, 0, -1);
+                            e.move_cursor(0, -1);
                         }
                         KeyCode::Down => {
-                            move_cursor(&mut stdout, &mut e, 0, 1);
+                            e.move_cursor(0, 1);
+                        }
+                        KeyCode::Home => {
+                            e.cursor_home();
+                        }
+                        KeyCode::End => {
+                            e.cursor_end();
                         }
                         KeyCode::Char(c) => {
                             e.handle_char(c);
-                            let new_pos = e.get_cursor();
-                            execute!(stdout, MoveTo(new_pos.0, new_pos.1)).unwrap();
                         }
                         _ => {}
                     }
@@ -127,15 +129,18 @@ pub fn main() -> std::io::Result<()> {
             _ => {}
         }
 
+        let cur_pos = e.get_cursor();
         execute!(
             stdout,
+            Hide,
+            MoveTo(cur_pos.0, cur_pos.1),
             SavePosition,
             Clear(ClearType::CurrentLine),
             MoveTo(0, 0)
         )
         .unwrap();
         e.draw(&mut stdout)?;
-        execute!(stdout, RestorePosition).unwrap();
+        execute!(stdout, RestorePosition, Show).unwrap();
     }
 
     disable_raw_mode().unwrap();
