@@ -14,16 +14,59 @@ pub enum Movement {
     Relative(isize, isize),
 }
 
+pub struct RenderConfig {
+    tab_size: usize,
+}
+
+impl Default for RenderConfig {
+    fn default() -> Self {
+        RenderConfig {
+            tab_size: 4
+        }
+    }
+}
+
+struct Line {
+    raw: String,
+}
+
+impl Line {
+    pub fn new(raw: String) -> Self {
+        Line {
+            raw,
+        }
+    }
+
+    pub fn get_raw(&self) -> &str {
+        &self.raw
+    }
+
+    pub fn render(&self, options: &RenderConfig) -> String {
+        let rendered = self.raw.trim_end().to_string();
+
+        rendered.replace('\t', &" ".repeat(options.tab_size))
+    }
+}
+
 #[derive(Default)]
 pub struct Editor {
     col_offset: usize,
     cx: usize,
     cy: usize,
     left_gutter_size: usize,
+    render_opts: RenderConfig,
     row_offset: usize,
-    rows: Vec<String>,
+    rows: Vec<Line>,
+    rx: usize,
     screen_cols: usize,
     screen_rows: usize,
+}
+
+// Essentially just replaces tabs with 4 spaces
+fn convert_cx_to_rx(line: &Line, cx: usize, render_opts: &RenderConfig) -> usize {
+    if cx >= line.get_raw().len() { line.render(render_opts).len(); }
+    let raw = line.get_raw().split_at(cx).0;
+    raw.matches('\t').count() * 3 + cx
 }
 
 impl Editor {
@@ -31,7 +74,7 @@ impl Editor {
         let left_gutter_size = Self::calculate_gutter(0, rows, 1);
         Editor {
             left_gutter_size,
-            rows: vec!["Rudit version 0.1.0 - New file".to_string()],
+            rows: vec![Line::new("Rudit version 0.1.0:\tNew file".to_string())],
             screen_rows: rows,
             screen_cols: cols - left_gutter_size,
             ..Editor::default()
@@ -46,7 +89,7 @@ impl Editor {
         loop {
             let mut temp = String::new();
             let n = reader.read_line(&mut temp)?;
-            self.rows.push(temp);
+            self.rows.push(Line::new(temp));
             if n == 0 {
                 break;
             }
@@ -70,7 +113,7 @@ impl Editor {
                 )
                 .as_bytes(),
             );
-            let row = self.rows.get(y).unwrap().trim_end(); // Safe because of array bounds
+            let row = self.rows.get(y).unwrap().render(&self.render_opts); // Safe because of array bounds
             let col_split = if (self.col_offset >= row.len()) {
                 ""
             } else {
@@ -100,33 +143,33 @@ impl Editor {
     }
 
     pub fn get_rel_cursor(&self) -> (u16, u16) {
-        ((self.cx - self.col_offset + self.left_gutter_size) as u16, (self.cy - self.row_offset) as u16)
+        ((self.rx - self.col_offset + self.left_gutter_size) as u16, (self.cy - self.row_offset) as u16)
     }
 
     pub fn move_cursor(&mut self, pos: Movement) {
         match pos {
             Movement::BegFile => {
+                self.col_offset = 0;
                 self.cx = 0;
                 self.cy = 0;
                 self.row_offset = 0;
-                self.col_offset = 0;
             }
             Movement::Home => {
-                self.cx = 0;
                 self.col_offset = 0;
+                self.cx = 0;
             }
             Movement::End => {
-                if let Some(line) = self.rows.get(self.cy) {
-                    self.cx = if line.is_empty() {0} else {line.trim_end().len()};
+                if let Some(line) = self.rows.get(self.cy).map(|l| l.get_raw().trim_end()) {
+                    self.cx = if line.is_empty() {0} else {line.len()};
                 }
             }
             // Up
             Movement::Relative(0, dy) if dy < 0 => {
                 let new_cy = self.cy as isize + dy;
                 if new_cy >= 0 {
-                    if let Some(line) = self.rows.get(new_cy as usize) {
+                    if let Some(line) = self.rows.get(new_cy as usize).map(|l| l.get_raw().trim_end()) {
                         self.cy = new_cy as usize;
-                        if self.cx > line.trim_end().len() {
+                        if self.cx > line.len() {
                             self.move_cursor(Movement::End);
                         }
                     }
@@ -134,9 +177,9 @@ impl Editor {
             }
             // Down
             Movement::Relative(0, dy) if dy > 0 => {
-                if let Some(line) = self.rows.get(self.cy + dy as usize) {
+                if let Some(line) = self.rows.get(self.cy + dy as usize).map(|l| l.get_raw().trim_end()) {
                     self.cy += dy as usize;
-                    if self.cx > line.trim_end().len() {
+                    if self.cx > line.len() {
                         self.move_cursor(Movement::End);
                     }
                 }
@@ -154,8 +197,8 @@ impl Editor {
             }
             // Right
             Movement::Relative(dx, 0) if dx > 0 => {
-                if let Some(line) = self.rows.get(self.cy) {
-                    if self.cx + dx as usize > line.trim_end().len() {
+                if let Some(line) = self.rows.get(self.cy).map(|l| l.get_raw().trim_end()) {
+                    if self.cx + dx as usize > line.len() {
                         if self.cy < self.rows.len() - 1 {
                             self.move_cursor(Movement::Relative(0, 1));
                             self.move_cursor(Movement::Home);
@@ -173,10 +216,12 @@ impl Editor {
     }
 
     pub fn write_char(&mut self, c: char) {
-        if let Some(mut line) = self.rows.get(self.cy).map(|l| l.to_string()) {
-            line.insert(self.cx, c);
+        if let Some(line) = self.rows.get(self.cy) {
+            // panic!("Not implemented yet");
+            let mut s = line.get_raw().to_string();
+            s.insert(self.cx, c);
 
-            self.rows[self.cy] = line;
+            self.rows[self.cy] = Line::new(s);
             self.move_cursor(Movement::Relative(1, 0));
         }
     }
@@ -188,11 +233,14 @@ impl Editor {
     }
 
     fn scroll(&mut self) {
-        if self.cx < self.col_offset {
-            self.col_offset = self.cx;
+        if self.rows.get(self.cy).is_none() { return; }
+        self.rx = convert_cx_to_rx(self.rows.get(self.cy).unwrap(), self.cx, &self.render_opts);
+
+        if self.rx < self.col_offset {
+            self.col_offset = self.rx;
         }
-        if self.cx - self.col_offset > self.screen_cols {
-            self.col_offset = self.cx - self.screen_cols;
+        if self.rx - self.col_offset > self.screen_cols {
+            self.col_offset = self.rx - self.screen_cols;
         }
         if self.cy < self.row_offset {
             self.row_offset = self.cy;
