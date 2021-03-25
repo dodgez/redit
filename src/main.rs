@@ -107,6 +107,12 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                         KeyCode::End => {
                             e.move_cursor(editor::Movement::End);
                         }
+                        KeyCode::PageUp => {
+                            e.move_cursor(editor::Movement::PageUp);
+                        }
+                        KeyCode::PageDown => {
+                            e.move_cursor(editor::Movement::PageDown);
+                        }
                         KeyCode::Char(c) => {
                             e.write_char(c);
                         }

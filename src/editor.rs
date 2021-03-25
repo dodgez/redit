@@ -10,6 +10,8 @@ pub enum Movement {
     EndFile,
     Home,
     End,
+    PageUp,
+    PageDown,
     Absolute(usize, usize),
     Relative(isize, isize),
 }
@@ -163,9 +165,19 @@ impl Editor {
                     self.cx = if line.is_empty() {0} else {line.len()};
                 }
             }
+            Movement::PageUp => {
+                self.cy = self.row_offset;
+                self.move_cursor(Movement::Relative(0, 0 - (self.screen_rows as isize)));
+            }
+            Movement::PageDown => {
+                self.cy = self.row_offset + self.screen_rows;
+                if self.cy > self.rows.len() { self.cy = self.rows.len(); }
+                self.move_cursor(Movement::Relative(0, self.screen_rows as isize));
+            }
             // Up
             Movement::Relative(0, dy) if dy < 0 => {
                 let new_cy = self.cy as isize + dy;
+                let new_cy = if new_cy < 0 {0} else {new_cy};
                 if new_cy >= 0 {
                     if let Some(line) = self.rows.get(new_cy as usize).map(|l| l.get_raw().trim_end()) {
                         self.cy = new_cy as usize;
@@ -177,8 +189,10 @@ impl Editor {
             }
             // Down
             Movement::Relative(0, dy) if dy > 0 => {
-                if let Some(line) = self.rows.get(self.cy + dy as usize).map(|l| l.get_raw().trim_end()) {
-                    self.cy += dy as usize;
+                let new_cy = self.cy + dy as usize;
+                let new_cy = if new_cy > self.rows.len() {self.rows.len() - 1} else {new_cy};
+                if let Some(line) = self.rows.get(new_cy).map(|l| l.get_raw().trim_end()) {
+                    self.cy = new_cy;
                     if self.cx > line.len() {
                         self.move_cursor(Movement::End);
                     }
