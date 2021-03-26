@@ -1,5 +1,5 @@
 [package]
-name = "rudit"
+name = "redit"
 version = "0.1.0"
 authors = ["dodgez <zacharysdodge@gmail.com>"]
 edition = "2018"
