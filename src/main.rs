@@ -33,7 +33,9 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
 
     let initial_size = size()?;
     let mut e = editor::Editor::new(initial_size.1.into(), initial_size.0.into());
-    if let Some(file) = file {e.open(&file)?};
+    if let Some(file) = file {
+        e.open(&file)?
+    };
 
     let mut stdout = std::io::stdout();
     execute!(
@@ -68,25 +70,15 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                     break;
                 } else if event.modifiers == KeyModifiers::CONTROL {
                     match event.code {
-                        KeyCode::Char('c') => {
-                            continue;
-                        }
-                        KeyCode::Char('s') => {
-                        }
-                        KeyCode::Char('z') => {
-                            continue;
-                            e.save()?;
-                        }
-                        KeyCode::Char('v') => {
-                            continue;
-                        }
-                        KeyCode::Char('m') => {
-                            continue;
-                        }
                         KeyCode::Char('q') => {
                             break;
                         }
-                        _ => {}
+                        KeyCode::Char('s') => {
+                            e.save()?;
+                        }
+                        _ => {
+                            continue;
+                        }
                     }
                 } else if event.modifiers == KeyModifiers::NONE {
                     match event.code {
@@ -117,7 +109,9 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                         KeyCode::Char(c) => {
                             e.write_char(c);
                         }
-                        _ => {}
+                        _ => {
+                            continue;
+                        }
                     }
                 }
             }

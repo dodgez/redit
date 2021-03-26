@@ -22,9 +22,7 @@ pub struct RenderConfig {
 
 impl Default for RenderConfig {
     fn default() -> Self {
-        RenderConfig {
-            tab_size: 4
-        }
+        RenderConfig { tab_size: 4 }
     }
 }
 
@@ -34,9 +32,7 @@ struct Line {
 
 impl Line {
     pub fn new(raw: String) -> Self {
-        Line {
-            raw,
-        }
+        Line { raw }
     }
 
     pub fn get_raw(&self) -> &str {
@@ -58,6 +54,7 @@ pub struct Editor {
     cy: usize,
     file_path: Option<PathBuf>,
     left_gutter_size: usize,
+    message: Option<String>,
     render_opts: RenderConfig,
     row_offset: usize,
     rows: Vec<Line>,
@@ -68,7 +65,9 @@ pub struct Editor {
 
 // Essentially just replaces tabs with 4 spaces
 fn convert_cx_to_rx(line: &Line, cx: usize, render_opts: &RenderConfig) -> usize {
-    if cx >= line.get_raw().len() { line.render(render_opts).len(); }
+    if cx >= line.get_raw().len() {
+        line.render(render_opts).len();
+    }
     let raw = line.get_raw().split_at(cx).0;
     raw.matches('\t').count() * 3 + cx
 }
@@ -91,7 +90,7 @@ impl Editor {
         let file = File::open(file_name)?;
         let mut reader = BufReader::new(file);
         self.rows = vec![];
-        
+
         loop {
             let mut temp = String::new();
             let n = reader.read_line(&mut temp)?;
@@ -100,13 +99,14 @@ impl Editor {
                 break;
             }
         }
-        
+
         self.update_left_gutter();
         let mut file_name = file_name.as_ref().to_path_buf();
         if let Ok(path) = file_name.canonicalize() {
             file_name = path;
         }
         self.file_path = Some(file_name);
+        self.set_message(&"File opened.");
 
         Ok(())
     }
@@ -122,6 +122,7 @@ impl Editor {
                 .collect::<Vec<&str>>()
                 .join("");
             file.write_all(contents.as_bytes());
+            self.set_message(&"File saved.");
         }
 
         Ok(())
@@ -164,18 +165,31 @@ impl Editor {
 
         // File status bar
         stdout.write_all(b"\x1b[K")?;
-        let mut file_s = self.file_path.as_ref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_else(|| "[No Name]".to_string());
+        let mut file_s = self
+            .file_path
+            .as_ref()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "[No Name]".to_string());
         let status_start = "File: ";
         let max_length = self.screen_cols + self.left_gutter_size - status_start.len() - 12; // 12 for line col status up to 4 chars each
         if file_s.len() > max_length {
             file_s = file_s.split_at(file_s.len() - max_length).1.to_string();
         }
-        stdout.write_all(format!("{}{} L{}:C{}", status_start, file_s, self.cy + 1, self.rx).as_bytes())?;
+        stdout.write_all(
+            format!("{}{} L{}:C{}", status_start, file_s, self.cy + 1, self.rx).as_bytes(),
+        )?;
         stdout.write_all(b"\r\n")?;
 
         // Message status bar
         stdout.write_all(b"\x1b[K")?;
-        stdout.write_all(b"Message: [No Messages]")?;
+        match &self.message {
+            Some(message) => {
+                stdout.write_all(format!("Message at {}", message).as_bytes())?;
+            }
+            None => {
+                stdout.write_all(b"[No Messages]")?;
+            }
+        }
 
         Ok(())
     }
@@ -190,7 +204,10 @@ impl Editor {
     }
 
     pub fn get_rel_cursor(&self) -> (u16, u16) {
-        ((self.rx - self.col_offset + self.left_gutter_size) as u16, (self.cy - self.row_offset) as u16)
+        (
+            (self.rx - self.col_offset + self.left_gutter_size) as u16,
+            (self.cy - self.row_offset) as u16,
+        )
     }
 
     pub fn move_cursor(&mut self, pos: Movement) {
@@ -207,7 +224,7 @@ impl Editor {
             }
             Movement::End => {
                 if let Some(line) = self.rows.get(self.cy).map(|l| l.get_raw().trim_end()) {
-                    self.cx = if line.is_empty() {0} else {line.len()};
+                    self.cx = if line.is_empty() { 0 } else { line.len() };
                 }
             }
             Movement::PageUp => {
@@ -216,15 +233,21 @@ impl Editor {
             }
             Movement::PageDown => {
                 self.cy = self.row_offset + self.screen_rows;
-                if self.cy > self.rows.len() { self.cy = self.rows.len(); }
+                if self.cy > self.rows.len() {
+                    self.cy = self.rows.len();
+                }
                 self.move_cursor(Movement::Relative(0, self.screen_rows as isize));
             }
             // Up
             Movement::Relative(0, dy) if dy < 0 => {
                 let new_cy = self.cy as isize + dy;
-                let new_cy = if new_cy < 0 {0} else {new_cy};
+                let new_cy = if new_cy < 0 { 0 } else { new_cy };
                 if new_cy >= 0 {
-                    if let Some(line) = self.rows.get(new_cy as usize).map(|l| l.get_raw().trim_end()) {
+                    if let Some(line) = self
+                        .rows
+                        .get(new_cy as usize)
+                        .map(|l| l.get_raw().trim_end())
+                    {
                         self.cy = new_cy as usize;
                         if self.cx > line.len() {
                             self.move_cursor(Movement::End);
@@ -235,7 +258,11 @@ impl Editor {
             // Down
             Movement::Relative(0, dy) if dy > 0 => {
                 let new_cy = self.cy + dy as usize;
-                let new_cy = if new_cy > self.rows.len() {self.rows.len() - 1} else {new_cy};
+                let new_cy = if new_cy > self.rows.len() {
+                    self.rows.len() - 1
+                } else {
+                    new_cy
+                };
                 if let Some(line) = self.rows.get(new_cy).map(|l| l.get_raw().trim_end()) {
                     self.cy = new_cy;
                     if self.cx > line.len() {
@@ -284,14 +311,25 @@ impl Editor {
         }
     }
 
+    fn set_message(&mut self, message: &dyn AsRef<str>) {
+        self.message = Some(format!(
+            "{}: {}",
+            chrono::Local::now().format("%I:%M:%S %P"),
+            message.as_ref()
+        ));
+    }
+
     fn update_left_gutter(&mut self) {
-        let new_gutter = Self::calculate_left_gutter(self.row_offset, self.screen_rows, self.rows.len());
+        let new_gutter =
+            Self::calculate_left_gutter(self.row_offset, self.screen_rows, self.rows.len());
         self.screen_cols = (self.screen_cols + self.left_gutter_size) - new_gutter;
         self.left_gutter_size = new_gutter;
     }
 
     fn scroll(&mut self) {
-        if self.rows.get(self.cy).is_none() { return; }
+        if self.rows.get(self.cy).is_none() {
+            return;
+        }
         self.rx = convert_cx_to_rx(self.rows.get(self.cy).unwrap(), self.cx, &self.render_opts);
 
         if self.rx < self.col_offset {
