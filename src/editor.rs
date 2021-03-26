@@ -328,12 +328,40 @@ impl Editor {
 
             self.rows[self.cy] = Line::new(s);
             self.move_cursor(Movement::Relative(1, 0));
-            if self.confirm_dirty {
-                self.message = None;
-            }
-            self.dirty = true;
-            self.confirm_dirty = false;
+            self.make_dirty();
         }
+    }
+
+    pub fn delete_char(&mut self) {
+        if let Some(line) = self.rows.get(self.cy) {
+            let mut s = line.get_raw().to_string();
+            if self.cx < line.get_clean_raw().len() {
+                s.remove(self.cx);
+                self.rows[self.cy] = Line::new(s);
+                self.make_dirty();
+            } else if let Some(other_line) = self.rows.get(self.cy + 1) {
+                s = line.get_clean_raw();
+                self.rows[self.cy] = Line::new(s + other_line.get_raw());
+                self.rows.remove(self.cy + 1);
+                self.make_dirty();
+            }
+        }
+    }
+    
+    pub fn backspace_char(&mut self) {
+        if self.cx > 0 || self.cy > 0 {
+            self.move_cursor(Movement::Relative(-1, 0));
+            self.delete_char();
+        }
+    }
+
+    fn make_dirty(&mut self) {
+        // Turn off the confirm quit message if applicable
+        if self.confirm_dirty {
+            self.message = None;
+        }
+        self.dirty = true;
+        self.confirm_dirty = false;
     }
 
     fn set_message(&mut self, message: &dyn AsRef<str>) {
