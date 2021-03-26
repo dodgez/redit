@@ -82,6 +82,15 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                             continue;
                         }
                     }
+                } else if event.modifiers == KeyModifiers::SHIFT {
+                    match event.code {
+                        KeyCode::Char(c) => {
+                            e.write_char(c);
+                        }
+                        _ => {
+                            continue;
+                        }
+                    }
                 } else if event.modifiers == KeyModifiers::NONE {
                     match event.code {
                         KeyCode::Left => {
