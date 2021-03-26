@@ -5,6 +5,16 @@ use std::io::prelude::*;
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
 
+use chrono::Local;
+
+mod editor_prompt;
+mod line;
+mod render_config;
+
+use editor_prompt::{EditorPrompt, EditorPromptPurpose};
+use line::Line;
+use render_config::RenderConfig;
+
 pub enum Movement {
     BegFile,
     EndFile,
@@ -14,40 +24,6 @@ pub enum Movement {
     PageDown,
     Absolute(usize, usize),
     Relative(isize, isize),
-}
-
-pub struct RenderConfig {
-    tab_size: usize,
-}
-
-impl Default for RenderConfig {
-    fn default() -> Self {
-        RenderConfig { tab_size: 4 }
-    }
-}
-
-struct Line {
-    raw: String,
-}
-
-impl Line {
-    pub fn new(raw: String) -> Self {
-        Line { raw }
-    }
-
-    pub fn get_raw(&self) -> &str {
-        &self.raw
-    }
-
-    pub fn get_clean_raw(&self) -> String {
-        self.raw.replace("\r", "").replace("\n", "")
-    }
-
-    pub fn render(&self, options: &RenderConfig) -> String {
-        let rendered = self.raw.trim_end().to_string();
-
-        rendered.replace('\t', &" ".repeat(options.tab_size))
-    }
 }
 
 #[derive(Default)]
@@ -61,6 +37,7 @@ pub struct Editor {
     file_path: Option<PathBuf>,
     left_gutter_size: usize,
     message: Option<String>,
+    prompt: EditorPrompt,
     render_opts: RenderConfig,
     row_offset: usize,
     rows: Vec<Line>,
@@ -121,7 +98,11 @@ impl Editor {
 
     pub fn save(&mut self) -> std::io::Result<()> {
         if let Some(file_path) = &self.file_path {
-            let file = std::fs::OpenOptions::new().truncate(true).write(true).create(true).open(file_path)?;
+            let file = std::fs::OpenOptions::new()
+                .truncate(true)
+                .write(true)
+                .create(true)
+                .open(file_path)?;
             let mut br = std::io::BufWriter::new(file);
 
             let contents = self
@@ -130,10 +111,13 @@ impl Editor {
                 .map(|l| l.get_raw())
                 .collect::<Vec<&str>>()
                 .join("");
-            br.write_all(contents.as_bytes());
+            br.write_all(contents.as_bytes())?;
             self.set_message(&"File saved.");
             self.dirty = false;
             self.confirm_dirty = false;
+        } else {
+            self.prompt =
+                EditorPrompt::new("New file name".to_string(), Some(EditorPromptPurpose::Save));
         }
 
         Ok(())
@@ -201,7 +185,14 @@ impl Editor {
             file_s = file_s.split_at(file_s.len() - max_length).1.to_string();
         }
         stdout.write_all(
-            format!("{}{} L{}:C{}", status_start, file_s, self.cy + 1, self.rx + 1).as_bytes(),
+            format!(
+                "{}{} L{}:C{}",
+                status_start,
+                file_s,
+                self.cy + 1,
+                self.rx + 1
+            )
+            .as_bytes(),
         )?;
         stdout.write_all(b"\r\n")?;
 
@@ -209,11 +200,15 @@ impl Editor {
         stdout.write_all(b"\x1b[K")?;
         match &self.message {
             Some(message) => {
-                stdout.write_all(format!("Message at {}", message).as_bytes())?;
+                stdout.write_all(format!("Message at {} ", message).as_bytes())?;
             }
             None => {
-                stdout.write_all(b"[No Messages]")?;
+                stdout.write_all(b"[No Messages] ")?;
             }
+        }
+
+        if self.prompt.is_active() {
+            self.prompt.draw(stdout);
         }
 
         Ok(())
@@ -229,13 +224,28 @@ impl Editor {
     }
 
     pub fn get_rel_cursor(&self) -> (u16, u16) {
-        (
-            (self.rx - self.col_offset + self.left_gutter_size) as u16,
-            (self.cy - self.row_offset) as u16,
-        )
+        if !(self.prompt.is_active()) {
+            (
+                (self.rx - self.col_offset + self.left_gutter_size) as u16,
+                (self.cy - self.row_offset) as u16,
+            )
+        } else {
+            let message_length = if let Some(message) = &self.message {
+                format!("Message at {} ", message).len()
+            } else {
+                "[No Messages] ".len()
+            };
+            (
+                message_length as u16 + self.prompt.get_length(),
+                self.screen_cols as u16,
+            )
+        }
     }
 
     pub fn move_cursor(&mut self, pos: Movement) {
+        if self.prompt.is_active() {
+            return;
+        }
         match pos {
             Movement::BegFile => {
                 self.col_offset = 0;
@@ -323,7 +333,9 @@ impl Editor {
     }
 
     pub fn write_char(&mut self, c: char) {
-        if let Some(line) = self.rows.get(self.cy) {
+        if self.prompt.is_active() {
+            self.prompt.add_char(c);
+        } else if let Some(line) = self.rows.get(self.cy) {
             let mut s = line.get_raw().to_string();
             s.insert(self.cx, c);
 
@@ -334,6 +346,9 @@ impl Editor {
     }
 
     pub fn delete_char(&mut self) {
+        if self.prompt.is_active() {
+            return;
+        }
         if let Some(line) = self.rows.get(self.cy) {
             let mut s = line.get_raw().to_string();
             if self.cx < line.get_clean_raw().len() {
@@ -348,25 +363,43 @@ impl Editor {
             }
         }
     }
-    
+
     pub fn backspace_char(&mut self) {
-        if self.cx > 0 || self.cy > 0 {
+        if self.prompt.is_active() {
+            self.prompt.remove_char();
+        } else if self.cx > 0 || self.cy > 0 {
             self.move_cursor(Movement::Relative(-1, 0));
             self.delete_char();
         }
     }
 
     pub fn do_return(&mut self) {
-        if let Some(line) = self.rows.get(self.cy) {
+        if self.prompt.is_active() {
+            self.check_prompt();
+        } else if let Some(line) = self.rows.get(self.cy) {
             let line_ending = line.get_raw().split_at(line.get_clean_raw().len()).1;
             let raw = line.get_raw().to_string();
             let parts = raw.split_at(self.cx);
             self.rows[self.cy] = Line::new(parts.0.to_string() + line_ending);
-            self.rows.insert(self.cy + 1, Line::new(parts.1.to_string()));
+            self.rows
+                .insert(self.cy + 1, Line::new(parts.1.to_string()));
             self.move_cursor(Movement::Relative(0, 1));
             self.move_cursor(Movement::Home);
             self.make_dirty();
         }
+    }
+
+    fn check_prompt(&mut self) {
+        let answer = self.prompt.get_answer();
+        if let Some(EditorPromptPurpose::Save) = self.prompt.purpose {
+            if let Some(answer) = answer {
+                self.file_path = Some(Path::new(answer).to_path_buf());
+                if let Err(e) = self.save() {
+                    self.set_message(&"Error writing to file");
+                }
+            }
+        }
+        self.prompt.exit();
     }
 
     fn make_dirty(&mut self) {
@@ -381,7 +414,7 @@ impl Editor {
     fn set_message(&mut self, message: &dyn AsRef<str>) {
         self.message = Some(format!(
             "{}: {}",
-            chrono::Local::now().format("%I:%M:%S %P"),
+            Local::now().format("%I:%M:%S %P"),
             message.as_ref()
         ));
     }
