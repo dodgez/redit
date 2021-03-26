@@ -120,6 +120,9 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                         KeyCode::Backspace => {
                             e.backspace_char();
                         }
+                        KeyCode::Enter => {
+                            e.do_return();
+                        }
                         KeyCode::Delete => {
                             e.delete_char();
                         }

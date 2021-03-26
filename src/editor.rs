@@ -355,6 +355,19 @@ impl Editor {
         }
     }
 
+    pub fn do_return(&mut self) {
+        if let Some(line) = self.rows.get(self.cy) {
+            let line_ending = line.get_raw().split_at(line.get_clean_raw().len()).1;
+            let raw = line.get_raw().to_string();
+            let parts = raw.split_at(self.cx);
+            self.rows[self.cy] = Line::new(parts.0.to_string() + line_ending);
+            self.rows.insert(self.cy + 1, Line::new(parts.1.to_string()));
+            self.move_cursor(Movement::Relative(0, 1));
+            self.move_cursor(Movement::Home);
+            self.make_dirty();
+        }
+    }
+
     fn make_dirty(&mut self) {
         // Turn off the confirm quit message if applicable
         if self.confirm_dirty {
