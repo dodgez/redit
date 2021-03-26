@@ -417,7 +417,9 @@ impl Editor {
     }
 
     pub fn cancel_prompt(&mut self) {
+        self.confirm_dirty = false;
         self.prompt.exit();
+        self.message = None;
     }
 
     fn make_dirty(&mut self) {

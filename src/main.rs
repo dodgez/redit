@@ -66,9 +66,7 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                 )?;
             }
             Event::Key(event) => {
-                if event.code == KeyCode::Esc {
-                    break;
-                } else if event.modifiers == KeyModifiers::CONTROL {
+                if event.modifiers == KeyModifiers::CONTROL {
                     match event.code {
                         KeyCode::Char('q') => {
                             if e.try_quit() {
