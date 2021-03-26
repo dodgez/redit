@@ -54,6 +54,7 @@ impl Line {
 pub struct Editor {
     bottom_gutter_size: usize,
     col_offset: usize,
+    confirm_dirty: bool,
     cx: usize,
     cy: usize,
     dirty: bool,
@@ -113,6 +114,7 @@ impl Editor {
         self.file_path = Some(file_name);
         self.set_message(&"File opened.");
         self.dirty = false;
+        self.confirm_dirty = false;
 
         Ok(())
     }
@@ -130,9 +132,20 @@ impl Editor {
             file.write_all(contents.as_bytes());
             self.set_message(&"File saved.");
             self.dirty = false;
+            self.confirm_dirty = false;
         }
 
         Ok(())
+    }
+
+    pub fn try_quit(&mut self) -> bool {
+        if !self.dirty || self.confirm_dirty {
+            true
+        } else {
+            self.confirm_dirty = true;
+            self.set_message(&"Press Ctrl-q again to quit");
+            false
+        }
     }
 
     pub fn draw<W: Write>(&self, stdout: &mut W) -> std::io::Result<()> {
@@ -315,7 +328,11 @@ impl Editor {
 
             self.rows[self.cy] = Line::new(s);
             self.move_cursor(Movement::Relative(1, 0));
+            if self.confirm_dirty {
+                self.message = None;
+            }
             self.dirty = true;
+            self.confirm_dirty = false;
         }
     }
 
