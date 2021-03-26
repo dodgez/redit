@@ -82,6 +82,18 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                         KeyCode::Char('o') => {
                             e.open();
                         }
+                        KeyCode::Left => {
+                            e.move_cursor(editor::Movement::Relative(-5, 0));
+                        }
+                        KeyCode::Right => {
+                            e.move_cursor(editor::Movement::Relative(5, 0));
+                        }
+                        KeyCode::Up => {
+                            e.move_cursor(editor::Movement::Relative(0, -5));
+                        }
+                        KeyCode::Down => {
+                            e.move_cursor(editor::Movement::Relative(0, 5));
+                        }
                         _ => {
                             continue;
                         }
