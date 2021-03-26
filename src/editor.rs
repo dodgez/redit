@@ -413,6 +413,10 @@ impl Editor {
             }
             _ => {}
         }
+        self.cancel_prompt();
+    }
+
+    pub fn cancel_prompt(&mut self) {
         self.prompt.exit();
     }
 

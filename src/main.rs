@@ -129,6 +129,9 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                         KeyCode::Delete => {
                             e.delete_char();
                         }
+                        KeyCode::Esc => {
+                            e.cancel_prompt();
+                        }
                         KeyCode::Char(c) => {
                             e.write_char(c);
                         }
