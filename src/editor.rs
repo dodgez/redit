@@ -97,7 +97,12 @@ impl Editor {
     }
 
     pub fn open(&mut self) {
-        self.prompt = EditorPrompt::new("File to open".to_string(), EditorPromptPurpose::Open);
+        if !self.dirty || self.confirm_dirty {
+            self.prompt = EditorPrompt::new("File to open".to_string(), EditorPromptPurpose::Open);
+        } else {
+            self.confirm_dirty = true;
+            self.set_message(&"Press Ctrl-o again to open a file");
+        }
     }
 
     pub fn save(&mut self) -> std::io::Result<()> {
