@@ -121,7 +121,8 @@ impl Editor {
 
     pub fn save(&mut self) -> std::io::Result<()> {
         if let Some(file_path) = &self.file_path {
-            let mut file = std::fs::OpenOptions::new().write(true).open(file_path)?;
+            let file = std::fs::OpenOptions::new().truncate(true).write(true).create(true).open(file_path)?;
+            let mut br = std::io::BufWriter::new(file);
 
             let contents = self
                 .rows
@@ -129,7 +130,7 @@ impl Editor {
                 .map(|l| l.get_raw())
                 .collect::<Vec<&str>>()
                 .join("");
-            file.write_all(contents.as_bytes());
+            br.write_all(contents.as_bytes());
             self.set_message(&"File saved.");
             self.dirty = false;
             self.confirm_dirty = false;
