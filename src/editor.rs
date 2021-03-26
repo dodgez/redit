@@ -69,7 +69,7 @@ impl Editor {
         }
     }
 
-    pub fn open(&mut self, file_name: &dyn AsRef<Path>) -> std::io::Result<()> {
+    pub fn open_file(&mut self, file_name: &dyn AsRef<Path>) -> std::io::Result<()> {
         let file = File::open(file_name)?;
         let mut reader = BufReader::new(file);
         self.rows = vec![];
@@ -96,6 +96,10 @@ impl Editor {
         Ok(())
     }
 
+    pub fn open(&mut self) {
+        self.prompt = EditorPrompt::new("File to open".to_string(), EditorPromptPurpose::Open);
+    }
+
     pub fn save(&mut self) -> std::io::Result<()> {
         if let Some(file_path) = &self.file_path {
             let file = std::fs::OpenOptions::new()
@@ -116,8 +120,7 @@ impl Editor {
             self.dirty = false;
             self.confirm_dirty = false;
         } else {
-            self.prompt =
-                EditorPrompt::new("New file name".to_string(), Some(EditorPromptPurpose::Save));
+            self.prompt = EditorPrompt::new("New file name".to_string(), EditorPromptPurpose::Save);
         }
 
         Ok(())
@@ -391,13 +394,24 @@ impl Editor {
 
     fn check_prompt(&mut self) {
         let answer = self.prompt.get_answer();
-        if let Some(EditorPromptPurpose::Save) = self.prompt.purpose {
-            if let Some(answer) = answer {
-                self.file_path = Some(Path::new(answer).to_path_buf());
-                if let Err(e) = self.save() {
-                    self.set_message(&"Error writing to file");
+        match self.prompt.purpose {
+            EditorPromptPurpose::Save => {
+                if let Some(answer) = answer {
+                    self.file_path = Some(Path::new(answer).to_path_buf());
+                    if let Err(e) = self.save() {
+                        self.set_message(&"Error writing to file");
+                    }
                 }
             }
+            EditorPromptPurpose::Open => {
+                if let Some(answer) = answer {
+                    let path = Path::new(answer).to_path_buf();
+                    if let Err(e) = self.open_file(&path) {
+                        self.set_message(&"Error opening file");
+                    }
+                }
+            }
+            _ => {}
         }
         self.prompt.exit();
     }

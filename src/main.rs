@@ -34,7 +34,7 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
     let initial_size = size()?;
     let mut e = editor::Editor::new(initial_size.1.into(), initial_size.0.into());
     if let Some(file) = file {
-        e.open(&file)?
+        e.open_file(&file)?
     };
 
     let mut stdout = std::io::stdout();
@@ -77,6 +77,9 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                         }
                         KeyCode::Char('s') => {
                             e.save()?;
+                        }
+                        KeyCode::Char('o') => {
+                            e.open();
                         }
                         _ => {
                             continue;

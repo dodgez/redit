@@ -1,7 +1,15 @@
 use std::io::{prelude::*, Stdout};
 
 pub enum EditorPromptPurpose {
+    None,
+    Open,
     Save,
+}
+
+impl Default for EditorPromptPurpose {
+    fn default() -> EditorPromptPurpose {
+        EditorPromptPurpose::None
+    }
 }
 
 #[derive(Default)]
@@ -9,11 +17,11 @@ pub struct EditorPrompt {
     active: bool,
     answer: Option<String>,
     message: Option<String>,
-    pub purpose: Option<EditorPromptPurpose>,
+    pub purpose: EditorPromptPurpose,
 }
 
 impl EditorPrompt {
-    pub fn new(message: String, purpose: Option<EditorPromptPurpose>) -> EditorPrompt {
+    pub fn new(message: String, purpose: EditorPromptPurpose) -> EditorPrompt {
         EditorPrompt {
             active: true,
             answer: None,
