@@ -141,6 +141,21 @@ impl Editor {
         }
     }
 
+    pub fn try_reload(&mut self) -> std::io::Result<()> {
+        if !self.dirty || self.confirm_dirty {
+            if let Some(file) = self.file_path.clone() {
+                self.open_file(&file)
+            } else {
+                self.set_message(&"No file to reload");
+                Ok(())
+            }
+        } else {
+            self.confirm_dirty = true;
+            self.set_message(&"Press Ctrl-r again to reload from disk");
+            Ok(())
+        }
+    }
+
     pub fn draw<W: Write>(&self, stdout: &mut W) -> std::io::Result<()> {
         for y in
             self.row_offset..std::cmp::min(self.rows.len(), self.row_offset + self.screen_rows + 1)

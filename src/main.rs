@@ -73,6 +73,9 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                                 break;
                             }
                         }
+                        KeyCode::Char('r') => {
+                            e.try_reload()?;
+                        }
                         KeyCode::Char('s') => {
                             e.save()?;
                         }
