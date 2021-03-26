@@ -200,7 +200,7 @@ impl Editor {
             file_s = file_s.split_at(file_s.len() - max_length).1.to_string();
         }
         stdout.write_all(
-            format!("{}{} L{}:C{}", status_start, file_s, self.cy + 1, self.rx).as_bytes(),
+            format!("{}{} L{}:C{}", status_start, file_s, self.cy + 1, self.rx + 1).as_bytes(),
         )?;
         stdout.write_all(b"\r\n")?;
 
