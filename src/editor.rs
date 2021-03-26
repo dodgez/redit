@@ -56,6 +56,7 @@ pub struct Editor {
     col_offset: usize,
     cx: usize,
     cy: usize,
+    dirty: bool,
     file_path: Option<PathBuf>,
     left_gutter_size: usize,
     message: Option<String>,
@@ -111,6 +112,7 @@ impl Editor {
         }
         self.file_path = Some(file_name);
         self.set_message(&"File opened.");
+        self.dirty = false;
 
         Ok(())
     }
@@ -127,6 +129,7 @@ impl Editor {
                 .join("");
             file.write_all(contents.as_bytes());
             self.set_message(&"File saved.");
+            self.dirty = false;
         }
 
         Ok(())
@@ -174,8 +177,12 @@ impl Editor {
             .as_ref()
             .map(|p| p.to_string_lossy().into_owned())
             .unwrap_or_else(|| "[No Name]".to_string());
-        let status_start = "File: ";
-        let max_length = self.screen_cols + self.left_gutter_size - status_start.len() - 12; // 12 for line col status up to 4 chars each
+        let status_start = if self.dirty {
+            "File (modified): "
+        } else {
+            "File: "
+        };
+        let max_length = self.screen_cols + self.left_gutter_size - status_start.len() - 21; // 21 for line col status up to 4 chars each
         if file_s.len() > max_length {
             file_s = file_s.split_at(file_s.len() - max_length).1.to_string();
         }
@@ -247,11 +254,7 @@ impl Editor {
                 let new_cy = self.cy as isize + dy;
                 let new_cy = if new_cy < 0 { 0 } else { new_cy };
                 if new_cy >= 0 {
-                    if let Some(line) = self
-                        .rows
-                        .get(new_cy as usize)
-                        .map(|l| l.get_clean_raw())
-                    {
+                    if let Some(line) = self.rows.get(new_cy as usize).map(|l| l.get_clean_raw()) {
                         self.cy = new_cy as usize;
                         if self.cx > line.len() {
                             self.move_cursor(Movement::End);
@@ -312,6 +315,7 @@ impl Editor {
 
             self.rows[self.cy] = Line::new(s);
             self.move_cursor(Movement::Relative(1, 0));
+            self.dirty = true;
         }
     }
 
