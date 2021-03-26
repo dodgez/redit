@@ -39,6 +39,10 @@ impl Line {
         &self.raw
     }
 
+    pub fn get_clean_raw(&self) -> String {
+        self.raw.replace("\r", "").replace("\n", "")
+    }
+
     pub fn render(&self, options: &RenderConfig) -> String {
         let rendered = self.raw.trim_end().to_string();
 
@@ -223,7 +227,7 @@ impl Editor {
                 self.cx = 0;
             }
             Movement::End => {
-                if let Some(line) = self.rows.get(self.cy).map(|l| l.get_raw().trim_end()) {
+                if let Some(line) = self.rows.get(self.cy).map(|l| l.get_clean_raw()) {
                     self.cx = if line.is_empty() { 0 } else { line.len() };
                 }
             }
@@ -246,7 +250,7 @@ impl Editor {
                     if let Some(line) = self
                         .rows
                         .get(new_cy as usize)
-                        .map(|l| l.get_raw().trim_end())
+                        .map(|l| l.get_clean_raw())
                     {
                         self.cy = new_cy as usize;
                         if self.cx > line.len() {
@@ -263,7 +267,7 @@ impl Editor {
                 } else {
                     new_cy
                 };
-                if let Some(line) = self.rows.get(new_cy).map(|l| l.get_raw().trim_end()) {
+                if let Some(line) = self.rows.get(new_cy).map(|l| l.get_clean_raw()) {
                     self.cy = new_cy;
                     if self.cx > line.len() {
                         self.move_cursor(Movement::End);
@@ -283,7 +287,7 @@ impl Editor {
             }
             // Right
             Movement::Relative(dx, 0) if dx > 0 => {
-                if let Some(line) = self.rows.get(self.cy).map(|l| l.get_raw().trim_end()) {
+                if let Some(line) = self.rows.get(self.cy).map(|l| l.get_clean_raw()) {
                     if self.cx + dx as usize > line.len() {
                         if self.cy < self.rows.len() - 1 {
                             self.move_cursor(Movement::Relative(0, 1));
