@@ -72,10 +72,10 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                             continue;
                         }
                         KeyCode::Char('s') => {
-                            continue;
                         }
                         KeyCode::Char('z') => {
                             continue;
+                            e.save()?;
                         }
                         KeyCode::Char('v') => {
                             continue;

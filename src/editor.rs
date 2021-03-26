@@ -111,6 +111,22 @@ impl Editor {
         Ok(())
     }
 
+    pub fn save(&mut self) -> std::io::Result<()> {
+        if let Some(file_path) = &self.file_path {
+            let mut file = std::fs::OpenOptions::new().write(true).open(file_path)?;
+
+            let contents = self
+                .rows
+                .iter()
+                .map(|l| l.get_raw())
+                .collect::<Vec<&str>>()
+                .join("");
+            file.write_all(contents.as_bytes());
+        }
+
+        Ok(())
+    }
+
     pub fn draw<W: Write>(&self, stdout: &mut W) -> std::io::Result<()> {
         for y in
             self.row_offset..std::cmp::min(self.rows.len(), self.row_offset + self.screen_rows + 1)
