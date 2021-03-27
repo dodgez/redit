@@ -362,8 +362,8 @@ impl Editor {
             let mut s = line.get_raw().to_string();
             s.insert(self.cx, c);
 
-            self.rows[self.cy] = Line::new(s);
             self.move_cursor(Movement::Relative(1, 0));
+            self.replace_row(self.cy, s);
             self.make_dirty();
         }
     }
@@ -376,12 +376,12 @@ impl Editor {
             let mut s = line.get_raw().to_string();
             if self.cx < line.get_clean_raw().len() {
                 s.remove(self.cx);
-                self.rows[self.cy] = Line::new(s);
+                self.replace_row(self.cy, s);
                 self.make_dirty();
             } else if let Some(other_line) = self.rows.get(self.cy + 1) {
-                s = line.get_clean_raw();
-                self.rows[self.cy] = Line::new(s + other_line.get_raw());
-                self.rows.remove(self.cy + 1);
+                s = line.get_clean_raw() + other_line.get_raw();
+                self.replace_row(self.cy, s);
+                self.remove_row(self.cy + 1);
                 self.make_dirty();
             }
         }
@@ -403,13 +403,25 @@ impl Editor {
             let line_ending = line.get_raw().split_at(line.get_clean_raw().len()).1;
             let raw = line.get_raw().to_string();
             let parts = raw.split_at(self.cx);
-            self.rows[self.cy] = Line::new(parts.0.to_string() + line_ending);
-            self.rows
-                .insert(self.cy + 1, Line::new(parts.1.to_string()));
             self.move_cursor(Movement::Relative(0, 1));
             self.move_cursor(Movement::Home);
+            let split_row = parts.0.to_string() + line_ending;
+            self.replace_row(self.cy, split_row);
+            self.insert_row(self.cy + 1, parts.1.to_string());
             self.make_dirty();
         }
+    }
+
+    fn insert_row(&mut self, row_index: usize, contents: String) {
+        self.rows.insert(row_index, Line::new(contents));
+    }
+
+    fn replace_row(&mut self, row: usize, contents: String) {
+        self.rows[row] = Line::new(contents);
+    }
+
+    fn remove_row(&mut self, row: usize) {
+        self.rows.remove(self.cy + 1);
     }
 
     fn check_prompt(&mut self) {
