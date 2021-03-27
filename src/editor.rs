@@ -62,7 +62,7 @@ impl Editor {
         Editor {
             bottom_gutter_size,
             left_gutter_size,
-            rows: vec![Line::new("Rudit version 0.1.0".to_string())],
+            rows: vec![Line::new("Redit version 0.1.0".to_string())],
             screen_rows: rows - bottom_gutter_size,
             screen_cols: cols - left_gutter_size,
             ..Editor::default()

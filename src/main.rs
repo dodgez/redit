@@ -177,7 +177,7 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
 }
 
 pub fn main() -> std::io::Result<()> {
-    let matches = App::new("Rudit")
+    let matches = App::new("Redit")
         .version("0.1.0")
         .author("Zachary Dodge")
         .about("A simple text editor written in Rust")
