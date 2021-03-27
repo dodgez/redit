@@ -1,5 +1,6 @@
 use crate::editor::RenderConfig;
 
+#[derive(Clone)] // Needed in editor::Editor.get_text_region
 pub struct Line {
     raw: String,
 }

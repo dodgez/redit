@@ -48,7 +48,7 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
     enable_raw_mode()?;
 
     e.draw(&mut stdout)?;
-    e.move_cursor(editor::Movement::BegFile);
+    e.move_cursor(editor::Movement::BegFile, false);
     let cur_pos = e.get_rel_cursor();
     execute!(stdout, MoveTo(cur_pos.0, cur_pos.1))?;
 
@@ -66,91 +66,94 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                 )?;
             }
             Event::Key(event) => {
-                if event.modifiers == KeyModifiers::CONTROL {
-                    match event.code {
-                        KeyCode::Char('q') => {
-                            if e.try_quit() {
-                                break;
-                            }
-                        }
-                        KeyCode::Char('r') => {
-                            e.try_reload()?;
-                        }
-                        KeyCode::Char('s') => {
-                            e.save()?;
-                        }
-                        KeyCode::Char('o') => {
-                            e.open();
-                        }
-                        KeyCode::Left => {
-                            e.move_cursor(editor::Movement::Relative(-5, 0));
-                        }
-                        KeyCode::Right => {
-                            e.move_cursor(editor::Movement::Relative(5, 0));
-                        }
-                        KeyCode::Up => {
-                            e.move_cursor(editor::Movement::Relative(0, -5));
-                        }
-                        KeyCode::Down => {
-                            e.move_cursor(editor::Movement::Relative(0, 5));
-                        }
-                        _ => {
-                            continue;
+                let dist = if event.modifiers.intersects(KeyModifiers::CONTROL) {
+                    5
+                } else {
+                    1
+                };
+                match event.code {
+                    KeyCode::Char('q') if event.modifiers == KeyModifiers::CONTROL => {
+                        if e.try_quit() {
+                            break;
                         }
                     }
-                } else if event.modifiers == KeyModifiers::SHIFT {
-                    match event.code {
-                        KeyCode::Char(c) => {
-                            e.write_char(c);
-                        }
-                        _ => {
-                            continue;
-                        }
+                    KeyCode::Char('r') if event.modifiers == KeyModifiers::CONTROL => {
+                        e.try_reload()?;
                     }
-                } else if event.modifiers == KeyModifiers::NONE {
-                    match event.code {
-                        KeyCode::Left => {
-                            e.move_cursor(editor::Movement::Relative(-1, 0));
-                        }
-                        KeyCode::Right => {
-                            e.move_cursor(editor::Movement::Relative(1, 0));
-                        }
-                        KeyCode::Up => {
-                            e.move_cursor(editor::Movement::Relative(0, -1));
-                        }
-                        KeyCode::Down => {
-                            e.move_cursor(editor::Movement::Relative(0, 1));
-                        }
-                        KeyCode::Home => {
-                            e.move_cursor(editor::Movement::Home);
-                        }
-                        KeyCode::End => {
-                            e.move_cursor(editor::Movement::End);
-                        }
-                        KeyCode::PageUp => {
-                            e.move_cursor(editor::Movement::PageUp);
-                        }
-                        KeyCode::PageDown => {
-                            e.move_cursor(editor::Movement::PageDown);
-                        }
-                        KeyCode::Backspace => {
-                            e.backspace_char();
-                        }
-                        KeyCode::Enter => {
-                            e.do_return();
-                        }
-                        KeyCode::Delete => {
-                            e.delete_char();
-                        }
-                        KeyCode::Esc => {
-                            e.cancel_prompt();
-                        }
-                        KeyCode::Char(c) => {
-                            e.write_char(c);
-                        }
-                        _ => {
-                            continue;
-                        }
+                    KeyCode::Char('s') if event.modifiers == KeyModifiers::CONTROL => {
+                        e.save()?;
+                    }
+                    KeyCode::Char('o') if event.modifiers == KeyModifiers::CONTROL => {
+                        e.open();
+                    }
+                    KeyCode::Left => {
+                        e.move_cursor(
+                            editor::Movement::Relative(-dist, 0),
+                            event.modifiers.intersects(KeyModifiers::SHIFT),
+                        );
+                    }
+                    KeyCode::Right => {
+                        e.move_cursor(
+                            editor::Movement::Relative(dist, 0),
+                            event.modifiers.intersects(KeyModifiers::SHIFT),
+                        );
+                    }
+                    KeyCode::Up => {
+                        e.move_cursor(
+                            editor::Movement::Relative(0, -dist),
+                            event.modifiers.intersects(KeyModifiers::SHIFT),
+                        );
+                    }
+                    KeyCode::Down => {
+                        e.move_cursor(
+                            editor::Movement::Relative(0, dist),
+                            event.modifiers.intersects(KeyModifiers::SHIFT),
+                        );
+                    }
+                    KeyCode::Home => {
+                        e.move_cursor(
+                            editor::Movement::Home,
+                            event.modifiers.intersects(KeyModifiers::SHIFT),
+                        );
+                    }
+                    KeyCode::End => {
+                        e.move_cursor(
+                            editor::Movement::End,
+                            event.modifiers.intersects(KeyModifiers::SHIFT),
+                        );
+                    }
+                    KeyCode::PageUp => {
+                        e.move_cursor(
+                            editor::Movement::PageUp,
+                            event.modifiers.intersects(KeyModifiers::SHIFT),
+                        );
+                    }
+                    KeyCode::PageDown => {
+                        e.move_cursor(
+                            editor::Movement::PageDown,
+                            event.modifiers.intersects(KeyModifiers::SHIFT),
+                        );
+                    }
+                    KeyCode::Backspace if event.modifiers == KeyModifiers::NONE => {
+                        e.backspace_char();
+                    }
+                    KeyCode::Enter if event.modifiers == KeyModifiers::NONE => {
+                        e.do_return();
+                    }
+                    KeyCode::Delete if event.modifiers == KeyModifiers::NONE => {
+                        e.delete_char();
+                    }
+                    KeyCode::Esc if event.modifiers == KeyModifiers::NONE => {
+                        e.cancel_prompt();
+                    }
+                    KeyCode::Char(c)
+                        if event.modifiers == KeyModifiers::NONE
+                            || event.modifiers == KeyModifiers::SHIFT =>
+                    {
+                        e.write_char(c);
+                    }
+                    _ => {
+                        continue;
                     }
                 }
             }

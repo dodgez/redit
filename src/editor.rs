@@ -1,5 +1,6 @@
 #![allow(unused)]
 
+use std::cmp::min;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::BufReader;
@@ -35,6 +36,9 @@ pub struct Editor {
     cy: usize,
     dirty: bool,
     file_path: Option<PathBuf>,
+    highlighting: bool,
+    hx: usize,
+    hy: usize,
     left_gutter_size: usize,
     message: Option<String>,
     prompt: EditorPrompt,
@@ -157,9 +161,7 @@ impl Editor {
     }
 
     pub fn draw<W: Write>(&self, stdout: &mut W) -> std::io::Result<()> {
-        for y in
-            self.row_offset..std::cmp::min(self.rows.len(), self.row_offset + self.screen_rows + 1)
-        {
+        for y in self.row_offset..min(self.rows.len(), self.row_offset + self.screen_rows + 1) {
             let gutter_size = (if y < 2 { 2 } else { 2 + y } as f32).log10().ceil() as usize; // 2+ so line numbers start at 1
             stdout.write_all(
                 format!(
@@ -265,9 +267,16 @@ impl Editor {
         }
     }
 
-    pub fn move_cursor(&mut self, pos: Movement) {
+    pub fn move_cursor(&mut self, pos: Movement, with_highlight: bool) {
         if self.prompt.is_active() {
             return;
+        }
+        if with_highlight && !self.highlighting {
+            self.hx = self.cx;
+            self.hy = self.cy;
+            self.highlighting = true;
+        } else if !with_highlight && self.highlighting {
+            self.highlighting = false;
         }
         match pos {
             Movement::BegFile => {
@@ -287,14 +296,20 @@ impl Editor {
             }
             Movement::PageUp => {
                 self.cy = self.row_offset;
-                self.move_cursor(Movement::Relative(0, 0 - (self.screen_rows as isize)));
+                self.move_cursor(
+                    Movement::Relative(0, 0 - (self.screen_rows as isize)),
+                    with_highlight,
+                );
             }
             Movement::PageDown => {
                 self.cy = self.row_offset + self.screen_rows;
                 if self.cy > self.rows.len() {
                     self.cy = self.rows.len();
                 }
-                self.move_cursor(Movement::Relative(0, self.screen_rows as isize));
+                self.move_cursor(
+                    Movement::Relative(0, self.screen_rows as isize),
+                    with_highlight,
+                );
             }
             // Up
             Movement::Relative(0, dy) if dy < 0 => {
@@ -304,7 +319,7 @@ impl Editor {
                     if let Some(line) = self.rows.get(new_cy as usize).map(|l| l.get_clean_raw()) {
                         self.cy = new_cy as usize;
                         if self.cx > line.len() {
-                            self.move_cursor(Movement::End);
+                            self.move_cursor(Movement::End, with_highlight);
                         }
                     }
                 }
@@ -320,7 +335,7 @@ impl Editor {
                 if let Some(line) = self.rows.get(new_cy).map(|l| l.get_clean_raw()) {
                     self.cy = new_cy;
                     if self.cx > line.len() {
-                        self.move_cursor(Movement::End);
+                        self.move_cursor(Movement::End, with_highlight);
                     }
                 }
             }
@@ -328,8 +343,8 @@ impl Editor {
             Movement::Relative(dx, 0) if dx < 0 => {
                 if self.cx as isize + dx < 0 {
                     if self.cy > 0 {
-                        self.move_cursor(Movement::Relative(0, -1));
-                        self.move_cursor(Movement::End);
+                        self.move_cursor(Movement::Relative(0, -1), with_highlight);
+                        self.move_cursor(Movement::End, with_highlight);
                     }
                 } else {
                     self.cx = (self.cx as isize + dx) as usize;
@@ -340,13 +355,17 @@ impl Editor {
                 if let Some(line) = self.rows.get(self.cy).map(|l| l.get_clean_raw()) {
                     if self.cx + dx as usize > line.len() {
                         if self.cy < self.rows.len() - 1 {
-                            self.move_cursor(Movement::Relative(0, 1));
-                            self.move_cursor(Movement::Home);
+                            self.move_cursor(Movement::Relative(0, 1), with_highlight);
+                            self.move_cursor(Movement::Home, with_highlight);
                         }
                     } else {
                         self.cx += dx as usize;
                     }
                 }
+            }
+            Movement::Absolute(x, y) => {
+                self.cy = min(y, self.rows.len() - 1); // There should be at least one row
+                self.cx = min(x, self.rows.get(self.cy).unwrap().get_raw().len());
             }
             _ => {}
         }
@@ -362,8 +381,8 @@ impl Editor {
             let mut s = line.get_raw().to_string();
             s.insert(self.cx, c);
 
-            self.move_cursor(Movement::Relative(1, 0));
             self.replace_row(self.cy, s);
+            self.move_cursor(Movement::Relative(1, 0), false);
             self.make_dirty();
         }
     }
@@ -372,7 +391,16 @@ impl Editor {
         if self.prompt.is_active() {
             return;
         }
-        if let Some(line) = self.rows.get(self.cy) {
+        if self.highlighting {
+            if self.cy < self.hy || (self.cy == self.hy && self.cx <= self.hx) {
+                self.remove_text_region(self.cx, self.cy, self.hx, self.hy);
+            } else {
+                self.remove_text_region(self.hx, self.hy, self.cx, self.cy);
+                self.move_cursor(Movement::Absolute(self.hx, self.hy), false);
+            }
+            self.highlighting = false;
+            self.make_dirty();
+        } else if let Some(line) = self.rows.get(self.cy) {
             let mut s = line.get_raw().to_string();
             if self.cx < line.get_clean_raw().len() {
                 s.remove(self.cx);
@@ -391,7 +419,7 @@ impl Editor {
         if self.prompt.is_active() {
             self.prompt.remove_char();
         } else if self.cx > 0 || self.cy > 0 {
-            self.move_cursor(Movement::Relative(-1, 0));
+            self.move_cursor(Movement::Relative(-1, 0), false);
             self.delete_char();
         }
     }
@@ -399,16 +427,28 @@ impl Editor {
     pub fn do_return(&mut self) {
         if self.prompt.is_active() {
             self.check_prompt();
-        } else if let Some(line) = self.rows.get(self.cy) {
-            let line_ending = line.get_raw().split_at(line.get_clean_raw().len()).1;
-            let raw = line.get_raw().to_string();
-            let parts = raw.split_at(self.cx);
-            self.move_cursor(Movement::Relative(0, 1));
-            self.move_cursor(Movement::Home);
-            let split_row = parts.0.to_string() + line_ending;
-            self.replace_row(self.cy, split_row);
-            self.insert_row(self.cy + 1, parts.1.to_string());
-            self.make_dirty();
+        } else {
+            if self.highlighting {
+                if self.cy < self.hy || (self.cy == self.hy && self.cx <= self.hx) {
+                    self.remove_text_region(self.cx, self.cy, self.hx, self.hy);
+                } else {
+                    self.remove_text_region(self.hx, self.hy, self.cx, self.cy);
+                    self.move_cursor(Movement::Absolute(self.hx, self.hy), false);
+                }
+                self.highlighting = false;
+                self.make_dirty();
+            }
+            if let Some(line) = self.rows.get(self.cy) {
+                let line_ending = line.get_raw().split_at(line.get_clean_raw().len()).1;
+                let raw = line.get_raw().to_string();
+                let parts = raw.split_at(self.cx);
+                let split_row = parts.0.to_string() + line_ending;
+                self.replace_row(self.cy, split_row);
+                self.insert_row(self.cy + 1, parts.1.to_string());
+                self.move_cursor(Movement::Relative(0, 1), false);
+                self.move_cursor(Movement::Home, false);
+                self.make_dirty();
+            }
         }
     }
 
@@ -422,6 +462,85 @@ impl Editor {
 
     fn remove_row(&mut self, row: usize) {
         self.rows.remove(self.cy + 1);
+    }
+
+    fn get_text_region(
+        &self,
+        start_x: usize,
+        start_y: usize,
+        end_x: usize,
+        end_y: usize,
+    ) -> Vec<Line> {
+        // Ensure the markers are inside the file
+        let start_y = min(start_y, self.rows.len());
+        let start_x = min(start_x, self.rows.get(start_y).unwrap().get_raw().len());
+        let end_y = min(end_y, self.rows.len());
+        let end_x = min(end_x, self.rows.get(end_y).unwrap().get_raw().len());
+
+        let mut text = vec![];
+        if start_y != end_y {
+            text.push(Line::new(
+                self.rows
+                    .get(start_y)
+                    .unwrap()
+                    .get_raw()
+                    .split_at(start_x)
+                    .1
+                    .to_string(),
+            ));
+            for i in start_y + 1..end_y {
+                text.push(self.rows.get(i).unwrap().to_owned());
+            }
+            text.push(Line::new(
+                self.rows
+                    .get(end_y)
+                    .unwrap()
+                    .get_raw()
+                    .split_at(end_x)
+                    .0
+                    .to_string(),
+            ));
+        } else {
+            text.push(Line::new(
+                self.rows
+                    .get(start_y)
+                    .unwrap()
+                    .get_raw()
+                    .get(start_x..end_x)
+                    .unwrap()
+                    .to_string(),
+            ));
+        }
+        text
+    }
+
+    fn remove_text_region(&mut self, start_x: usize, start_y: usize, end_x: usize, end_y: usize) {
+        // Ensure the markers are inside the file
+        let start_y = min(start_y, self.rows.len());
+        let start_x = min(start_x, self.rows.get(start_y).unwrap().get_raw().len());
+        let end_y = min(end_y, self.rows.len());
+        let end_x = min(end_x, self.rows.get(end_y).unwrap().get_raw().len());
+
+        if start_y != end_y {
+            self.replace_row(
+                start_y,
+                self.rows
+                    .get(start_y)
+                    .unwrap()
+                    .get_raw()
+                    .split_at(start_x)
+                    .0
+                    .to_string()
+                    + self.rows.get(end_y).unwrap().get_raw().split_at(end_x).1,
+            );
+            for i in start_y + 1..end_y + 1 {
+                self.remove_row(start_y + 1);
+            }
+        } else {
+            let mut row = self.rows.get(start_y).unwrap().get_raw().to_string();
+            row.replace_range(start_x..end_x, "");
+            self.replace_row(start_y, row);
+        }
     }
 
     fn check_prompt(&mut self) {
