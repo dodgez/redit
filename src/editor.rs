@@ -550,6 +550,60 @@ impl Editor {
         }
     }
 
+    pub fn cut(&mut self) -> Vec<Line> {
+        let clipboard = self.copy();
+        if self.highlighting {
+            if self.cy < self.hy || (self.cy == self.hy && self.cx <= self.hx) {
+                self.remove_text_region(self.cx, self.cy, self.hx, self.hy);
+            } else {
+                self.remove_text_region(self.hx, self.hy, self.cx, self.cy);
+                self.move_cursor(Movement::Absolute(self.hx, self.hy), false);
+            }
+            self.highlighting = false;
+            self.make_dirty();
+        }
+        clipboard
+    }
+    pub fn copy(&mut self) -> Vec<Line> {
+        let mut clipboard = vec![];
+        if self.highlighting {
+            if self.cy < self.hy || (self.cy == self.hy && self.cx <= self.hx) {
+                clipboard = self.get_text_region(self.cx, self.cy, self.hx, self.hy);
+            } else {
+                clipboard = self.get_text_region(self.hx, self.hy, self.cx, self.cy);
+            }
+        }
+        clipboard
+    }
+    pub fn paste(&mut self, clipboard: &Option<Vec<Line>>) {
+        if let Some(clipboard) = clipboard {
+            if self.highlighting {
+                if self.cy < self.hy || (self.cy == self.hy && self.cx <= self.hx) {
+                    self.remove_text_region(self.cx, self.cy, self.hx, self.hy);
+                } else {
+                    self.remove_text_region(self.hx, self.hy, self.cx, self.cy);
+                    self.move_cursor(Movement::Absolute(self.hx, self.hy), false);
+                }
+            }
+            if let Some(other_row) = self.rows.get(self.cy) {
+                let other_row = other_row.get_raw().split_at(self.cx);
+                let s = other_row.0.to_string()
+                    + &clipboard.get(0).unwrap().get_clean_raw()
+                    + other_row.1;
+                self.replace_row(self.cy, s);
+                self.move_cursor(
+                    Movement::Relative(clipboard.get(0).unwrap().get_clean_raw().len() as isize, 0),
+                    false,
+                );
+                for i in 1..clipboard.len() {
+                    self.insert_row(self.cy + 1, clipboard.get(i).unwrap().get_raw().to_string());
+                    self.move_cursor(Movement::Relative(0, 1), false);
+                }
+            }
+            self.make_dirty();
+        }
+    }
+
     fn check_prompt(&mut self) {
         let answer = self.prompt.get_answer();
         match self.prompt.purpose {

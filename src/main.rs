@@ -31,9 +31,9 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
         b: foreground_color.b,
     };
 
-    #[cfg(target_family="windows")]
+    #[cfg(target_family = "windows")]
     let initial_size = size()?;
-    #[cfg(target_family="unix")]
+    #[cfg(target_family = "unix")]
     let initial_size = {
         let size = size()?;
         (size.0 - 1, size.1 - 1)
@@ -63,6 +63,8 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
     let cur_pos = e.get_rel_cursor();
     execute!(stdout, MoveTo(cur_pos.0, cur_pos.1))?;
 
+    let mut clipboard = None;
+
     loop {
         let event = read()?;
         e = editors.get_mut(editor_index).unwrap();
@@ -70,9 +72,9 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
         match event {
             Event::Resize(width, height) => {
                 execute!(stdout, Clear(ClearType::All))?;
-                #[cfg(target_family="windows")]
+                #[cfg(target_family = "windows")]
                 e.resize(width as usize, height as usize);
-                #[cfg(target_family="unix")]
+                #[cfg(target_family = "unix")]
                 e.resize(width as usize - 1, height as usize - 1);
                 execute!(
                     stdout,
@@ -128,6 +130,15 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                     }
                     KeyCode::Char('o') if event.modifiers == KeyModifiers::CONTROL => {
                         e.open();
+                    }
+                    KeyCode::Char('c') if event.modifiers == KeyModifiers::CONTROL => {
+                        clipboard = Some(e.copy());
+                    }
+                    KeyCode::Char('x') if event.modifiers == KeyModifiers::CONTROL => {
+                        clipboard = Some(e.cut());
+                    }
+                    KeyCode::Char('v') if event.modifiers == KeyModifiers::CONTROL => {
+                        e.paste(&clipboard);
                     }
                     KeyCode::Left => {
                         e.move_cursor(
