@@ -295,21 +295,31 @@ impl Editor {
                 }
             }
             Movement::PageUp => {
+                let rel = self.cy - self.row_offset;
                 self.cy = self.row_offset;
+                let rollback = self.row_offset >= self.screen_rows;
                 self.move_cursor(
                     Movement::Relative(0, 0 - (self.screen_rows as isize)),
                     with_highlight,
                 );
+                if rollback {
+                    self.move_cursor(Movement::Relative(0, rel as isize), with_highlight);
+                }
             }
             Movement::PageDown => {
+                let rel = self.cy - self.row_offset;
                 self.cy = self.row_offset + self.screen_rows;
-                if self.cy > self.rows.len() {
-                    self.cy = self.rows.len();
-                }
+                let rollback = self.cy < self.rows.len() - 1; // -1 because row_offset can never get bigger
                 self.move_cursor(
                     Movement::Relative(0, self.screen_rows as isize),
                     with_highlight,
                 );
+                if rollback {
+                    self.move_cursor(
+                        Movement::Relative(0, 0 - (self.screen_rows - rel) as isize),
+                        with_highlight,
+                    );
+                }
             }
             // Up
             Movement::Relative(0, dy) if dy < 0 => {
@@ -327,7 +337,7 @@ impl Editor {
             // Down
             Movement::Relative(0, dy) if dy > 0 => {
                 let new_cy = self.cy + dy as usize;
-                let new_cy = if new_cy > self.rows.len() {
+                let new_cy = if new_cy >= self.rows.len() {
                     self.rows.len() - 1
                 } else {
                     new_cy
