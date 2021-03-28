@@ -472,6 +472,7 @@ impl Editor {
 
     fn remove_row(&mut self, row: usize) {
         self.rows.remove(row);
+        self.update_left_gutter();
     }
 
     fn get_text_region(
@@ -632,7 +633,7 @@ impl Editor {
         1 + if screen_rows < rows - row_offset {
             (2.0 + (row_offset + screen_rows) as f32).log10().ceil()
         } else {
-            (2.0 + rows as f32).log10().ceil()
+            (1.0 + rows as f32).log10().ceil()
         } as usize
     }
 
