@@ -32,7 +32,12 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
     };
 
     let initial_size = size()?;
-    let mut e = editor::Editor::new(initial_size.1.into(), initial_size.0.into());
+    let mut editors = vec![editor::Editor::new(
+        initial_size.1.into(),
+        initial_size.0.into(),
+    )];
+    let mut editor_index = 0;
+    let mut e = editors.get_mut(editor_index).unwrap();
     if let Some(file) = file {
         e.open_file(&file)?
     };
@@ -54,6 +59,7 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
 
     loop {
         let event = read()?;
+        e = editors.get_mut(editor_index).unwrap();
 
         match event {
             Event::Resize(width, height) => {
@@ -74,8 +80,36 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                 match event.code {
                     KeyCode::Char('q') if event.modifiers == KeyModifiers::CONTROL => {
                         if e.try_quit() {
-                            break;
+                            if editors.len() == 1 {
+                                break;
+                            } else {
+                                editors.remove(editor_index);
+                                editor_index = 0;
+                                e = editors.get_mut(editor_index).unwrap();
+                            }
                         }
+                    }
+                    KeyCode::Char('[') => {
+                        if editor_index == 0 {
+                            editor_index = editors.len() - 1;
+                        } else {
+                            editor_index -= 1;
+                        }
+                        e = editors.get_mut(editor_index).unwrap();
+                    }
+                    KeyCode::Char(']') => {
+                        if editor_index == editors.len() - 1 {
+                            editor_index = 0;
+                        } else {
+                            editor_index += 1;
+                        }
+                        e = editors.get_mut(editor_index).unwrap();
+                    }
+                    KeyCode::Char('\\') => {
+                        let size = size()?;
+                        editors.push(editor::Editor::new(size.1.into(), size.0.into()));
+                        let n = editors.len() - 1;
+                        e = editors.get_mut(n).unwrap();
                     }
                     KeyCode::Char('r') if event.modifiers == KeyModifiers::CONTROL => {
                         e.try_reload()?;
