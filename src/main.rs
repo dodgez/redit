@@ -58,7 +58,7 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
 
     enable_raw_mode()?;
 
-    e.draw(&mut stdout)?;
+    e.draw(&mut stdout, theme)?;
     e.move_cursor(editor::Movement::BegFile, false);
     let cur_pos = e.get_rel_cursor();
     execute!(stdout, MoveTo(cur_pos.0, cur_pos.1))?;
@@ -223,7 +223,7 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
             Clear(ClearType::CurrentLine),
             MoveTo(0, 0)
         )?;
-        e.draw(&mut stdout)?;
+        e.draw(&mut stdout, theme)?;
         execute!(stdout, RestorePosition, Show)?;
     }
 

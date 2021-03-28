@@ -1,12 +1,14 @@
 #![allow(unused)]
 
-use std::cmp::min;
+use std::cmp::{max, min};
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
 
 use chrono::Local;
+use crossterm::{execute, style::Color, style::SetBackgroundColor, style::SetForegroundColor};
+use syntect::highlighting::{Color as SynColor, Theme};
 
 mod editor_prompt;
 mod line;
@@ -57,6 +59,18 @@ fn convert_cx_to_rx(line: &Line, cx: usize, render_opts: &RenderConfig) -> usize
     }
     let raw = line.get_raw().split_at(cx).0;
     raw.matches('\t').count() * 3 + cx
+}
+
+fn set_stdout_color<W: Write>(
+    stdout: &mut W,
+    background: Color,
+    foreground: Color,
+) -> crossterm::Result<()> {
+    execute!(
+        stdout,
+        SetBackgroundColor(background),
+        SetForegroundColor(foreground)
+    )
 }
 
 impl Editor {
@@ -156,7 +170,19 @@ impl Editor {
         }
     }
 
-    pub fn draw<W: Write>(&self, stdout: &mut W) -> std::io::Result<()> {
+    pub fn draw<W: Write>(&self, stdout: &mut W, theme: &Theme) -> crossterm::Result<()> {
+        let bg = theme.settings.background.unwrap_or(SynColor::BLACK);
+        let bg_color = Color::Rgb {
+            r: bg.r,
+            g: bg.g,
+            b: bg.b,
+        };
+        let fg = theme.settings.foreground.unwrap_or(SynColor::WHITE);
+        let fg_color = Color::Rgb {
+            r: fg.r,
+            g: fg.g,
+            b: fg.b,
+        };
         for y in self.row_offset..min(self.rows.len(), self.row_offset + self.screen_rows + 1) {
             let gutter_size = (if y < 2 { 2 } else { 2 + y } as f32).log10().ceil() as usize; // 2+ so line numbers start at 1
             stdout.write_all(
@@ -177,7 +203,56 @@ impl Editor {
             if len > self.screen_cols {
                 len = self.screen_cols;
             }
-            stdout.write_all(col_split.split_at(len).0.as_bytes())?;
+            let row = col_split.split_at(len).0;
+            if self.highlighting && y >= min(self.cy, self.hy) && y <= max(self.cy, self.hy) {
+                if self.cy == self.hy {
+                    if self.cx < self.hx {
+                        let split = row.split_at(self.hx);
+                        stdout.write_all(split.0.split_at(self.cx).0.as_bytes())?;
+                        set_stdout_color(stdout, fg_color, bg_color)?;
+                        stdout.write_all(split.0.split_at(self.cx).1.as_bytes())?;
+                        set_stdout_color(stdout, bg_color, fg_color)?;
+                        stdout.write_all(split.1.as_bytes())?;
+                    } else {
+                        let split = row.split_at(self.cx);
+                        stdout.write_all(split.0.split_at(self.hx).0.as_bytes())?;
+                        set_stdout_color(stdout, fg_color, bg_color)?;
+                        stdout.write_all(split.0.split_at(self.hx).1.as_bytes())?;
+                        set_stdout_color(stdout, bg_color, fg_color)?;
+                        stdout.write_all(split.1.as_bytes())?;
+                    }
+                } else if y == min(self.cy, self.hy) {
+                    if self.cy < self.hy {
+                        stdout.write_all(row.split_at(self.cx).0.as_bytes())?;
+                        set_stdout_color(stdout, fg_color, bg_color)?;
+                        stdout.write_all(row.split_at(self.cx).1.as_bytes())?;
+                        set_stdout_color(stdout, bg_color, fg_color)?;
+                    } else {
+                        stdout.write_all(row.split_at(self.hx).0.as_bytes())?;
+                        set_stdout_color(stdout, fg_color, bg_color)?;
+                        stdout.write_all(row.split_at(self.hx).1.as_bytes())?;
+                        set_stdout_color(stdout, bg_color, fg_color)?;
+                    }
+                } else if y == max(self.cy, self.hy) {
+                    if self.cy < self.hy {
+                        set_stdout_color(stdout, fg_color, bg_color)?;
+                        stdout.write_all(row.split_at(self.hx).0.as_bytes())?;
+                        set_stdout_color(stdout, bg_color, fg_color)?;
+                        stdout.write_all(row.split_at(self.hx).1.as_bytes())?;
+                    } else {
+                        set_stdout_color(stdout, fg_color, bg_color)?;
+                        stdout.write_all(row.split_at(self.cx).0.as_bytes())?;
+                        set_stdout_color(stdout, bg_color, fg_color)?;
+                        stdout.write_all(row.split_at(self.cx).1.as_bytes())?;
+                    }
+                } else {
+                    set_stdout_color(stdout, fg_color, bg_color)?;
+                    stdout.write_all(row.as_bytes())?;
+                    set_stdout_color(stdout, bg_color, fg_color)?;
+                }
+            } else {
+                stdout.write_all(row.as_bytes())?;
+            }
 
             stdout.write_all(b"\x1b[K")?; // Clear line
             stdout.write_all(b"\r\n")?;

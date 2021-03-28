@@ -7,10 +7,10 @@ A simple text editor written in rust.
 - Select text with Shift
 - Multiple file buffers
 - Copy and Paste
+- Highlight selected text
 
 ### In-Progress
 Roughly listed in order of priority:
-- Highlight selected text (easy)
 - Syntax highlighting (hard)
 - Undo and redo history (medium)
 - Mouse support (easy with crossterm?)
