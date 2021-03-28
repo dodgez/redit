@@ -461,7 +461,7 @@ impl Editor {
     }
 
     fn remove_row(&mut self, row: usize) {
-        self.rows.remove(self.cy + 1);
+        self.rows.remove(row);
     }
 
     fn get_text_region(
@@ -533,7 +533,7 @@ impl Editor {
                     .to_string()
                     + self.rows.get(end_y).unwrap().get_raw().split_at(end_x).1,
             );
-            for i in start_y + 1..end_y + 1 {
+            for _ in start_y + 1..end_y + 1 {
                 self.remove_row(start_y + 1);
             }
         } else {
