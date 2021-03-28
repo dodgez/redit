@@ -249,7 +249,7 @@ impl Editor {
     }
 
     pub fn get_rel_cursor(&self) -> (u16, u16) {
-        if !(self.prompt.is_active()) {
+        if !self.prompt.is_active() {
             (
                 (self.rx - self.col_offset + self.left_gutter_size) as u16,
                 (self.cy - self.row_offset) as u16,
@@ -262,7 +262,7 @@ impl Editor {
             };
             (
                 message_length as u16 + self.prompt.get_length(),
-                self.screen_cols as u16,
+                self.screen_rows as u16 + 2, // +2 because prompt is on second line
             )
         }
     }
