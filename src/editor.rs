@@ -627,6 +627,6 @@ impl Editor {
     }
 
     fn calculate_bottom_gutter() -> usize {
-        2
+        3 // 2 for statuses and +1 for odd last-line behavior
     }
 }
