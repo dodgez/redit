@@ -61,16 +61,12 @@ fn convert_cx_to_rx(line: &Line, cx: usize, render_opts: &RenderConfig) -> usize
 
 impl Editor {
     pub fn new(rows: usize, cols: usize) -> Self {
-        let bottom_gutter_size = Self::calculate_bottom_gutter();
-        let left_gutter_size = Self::calculate_left_gutter(0, rows, 1);
-        Editor {
-            bottom_gutter_size,
-            left_gutter_size,
+        let mut e = Editor {
             rows: vec![Line::new("Redit version 0.1.0".to_string())],
-            screen_rows: rows - bottom_gutter_size,
-            screen_cols: cols - left_gutter_size,
             ..Editor::default()
-        }
+        };
+        e.resize(cols, rows);
+        e
     }
 
     pub fn open_file(&mut self, file_name: &dyn AsRef<Path>) -> std::io::Result<()> {
@@ -638,6 +634,6 @@ impl Editor {
     }
 
     fn calculate_bottom_gutter() -> usize {
-        3 // 2 for statuses and +1 for odd last-line behavior
+        2 // file status and prompt
     }
 }

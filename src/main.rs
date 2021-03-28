@@ -31,7 +31,13 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
         b: foreground_color.b,
     };
 
+    #[cfg(target_family="windows")]
     let initial_size = size()?;
+    #[cfg(target_family="unix")]
+    let initial_size = {
+        let size = size()?;
+        (size.0 - 1, size.1 - 1)
+    };
     let mut editors = vec![editor::Editor::new(
         initial_size.1.into(),
         initial_size.0.into(),
@@ -64,7 +70,10 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
         match event {
             Event::Resize(width, height) => {
                 execute!(stdout, Clear(ClearType::All))?;
-                e.resize(width.into(), height.into());
+                #[cfg(target_family="windows")]
+                e.resize(width as usize, height as usize);
+                #[cfg(target_family="unix")]
+                e.resize(width as usize - 1, height as usize - 1);
                 execute!(
                     stdout,
                     SetBackgroundColor(background_color),
