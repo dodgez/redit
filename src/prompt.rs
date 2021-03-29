@@ -1,28 +1,28 @@
-use std::io::{prelude::*, Stdout};
+use std::io::prelude::*;
 
-pub enum EditorPromptPurpose {
+pub enum PromptPurpose {
     None,
     Open,
     Save,
 }
 
-impl Default for EditorPromptPurpose {
-    fn default() -> EditorPromptPurpose {
-        EditorPromptPurpose::None
+impl Default for PromptPurpose {
+    fn default() -> PromptPurpose {
+        PromptPurpose::None
     }
 }
 
 #[derive(Default)]
-pub struct EditorPrompt {
+pub struct Prompt {
     active: bool,
     answer: Option<String>,
     message: Option<String>,
-    pub purpose: EditorPromptPurpose,
+    pub purpose: PromptPurpose,
 }
 
-impl EditorPrompt {
-    pub fn new(message: String, purpose: EditorPromptPurpose) -> EditorPrompt {
-        EditorPrompt {
+impl Prompt {
+    pub fn new(message: String, purpose: PromptPurpose) -> Prompt {
+        Prompt {
             active: true,
             answer: None,
             message: Some(message),
@@ -62,17 +62,18 @@ impl EditorPrompt {
         self.active
     }
 
-    pub fn draw<W: Write>(&self, stdout: &mut W) {
+    pub fn draw<W: Write>(&self, stdout: &mut W) -> std::io::Result<()> {
         let answer = self
             .answer
             .as_ref()
             .map(|s| s.to_string())
             .unwrap_or_else(|| "".to_string());
         if let Some(message) = self.message.as_ref() {
-            stdout.write_all(format!("{}: {}", message, answer).as_bytes());
+            stdout.write_all(format!("{}: {}", message, answer).as_bytes())?;
         } else {
-            stdout.write_all(answer.as_bytes());
+            stdout.write_all(answer.as_bytes())?;
         }
+        Ok(())
     }
 
     pub fn get_length(&self) -> u16 {

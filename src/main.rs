@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use clap::{App, Arg};
 use crossterm::{
     cursor::{Hide, MoveTo, RestorePosition, SavePosition, Show},
@@ -9,15 +11,24 @@ use crossterm::{
         LeaveAlternateScreen,
     },
 };
+use dirs::home_dir;
 use syntect::{
     highlighting::{Color as SynColor, ThemeSet},
     parsing::SyntaxSet,
 };
 
-mod editor;
+use redit::editor::{Editor, Movement};
 
 fn edit(file: Option<&str>) -> crossterm::Result<()> {
-    let ps = SyntaxSet::load_defaults_newlines();
+    let mut ps = SyntaxSet::load_defaults_newlines().into_builder();
+    let config_dir = home_dir()
+        .unwrap_or_else(|| PathBuf::from("~"))
+        .join(".config/redit");
+    let syntax_dir = config_dir.join("syntaxes");
+    if syntax_dir.exists() && ps.add_from_folder(syntax_dir, true).is_err() {
+        eprintln!("Couldn't load syntaxes");
+    }
+    let ps = ps.build();
     let theme = &ThemeSet::load_defaults().themes["Solarized (dark)"];
     let background_color = theme.settings.background.unwrap_or(SynColor::BLACK);
     let background_color = Color::Rgb {
@@ -39,7 +50,7 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
         let size = size()?;
         (size.0 - 1, size.1 - 1)
     };
-    let mut editors = vec![editor::Editor::new(
+    let mut editors = vec![Editor::new(
         initial_size.1.into(),
         initial_size.0.into(),
         ps.clone(),
@@ -61,7 +72,7 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
     enable_raw_mode()?;
 
     e.draw(&mut stdout, theme)?;
-    e.move_cursor(editor::Movement::BegFile, false);
+    e.move_cursor(Movement::BegFile, false);
     let cur_pos = e.get_rel_cursor();
     execute!(stdout, MoveTo(cur_pos.0, cur_pos.1), EnableMouseCapture)?;
 
@@ -87,25 +98,25 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
             Event::Mouse(event) => match event.kind {
                 MouseEventKind::ScrollDown => {
                     e.move_cursor(
-                        editor::Movement::Relative(0, 1),
+                        Movement::Relative(0, 1),
                         event.modifiers.intersects(KeyModifiers::SHIFT),
                     );
                 }
                 MouseEventKind::ScrollUp => {
                     e.move_cursor(
-                        editor::Movement::Relative(0, -1),
+                        Movement::Relative(0, -1),
                         event.modifiers.intersects(KeyModifiers::SHIFT),
                     );
                 }
                 MouseEventKind::Down(_) => {
                     e.move_cursor(
-                        editor::Movement::AbsoluteScreen(event.column as usize, event.row as usize),
+                        Movement::AbsoluteScreen(event.column as usize, event.row as usize),
                         event.modifiers.intersects(KeyModifiers::SHIFT),
                     );
                 }
                 MouseEventKind::Drag(_) => {
                     e.move_cursor(
-                        editor::Movement::AbsoluteScreen(event.column as usize, event.row as usize),
+                        Movement::AbsoluteScreen(event.column as usize, event.row as usize),
                         true,
                     );
                 }
@@ -149,11 +160,7 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                     }
                     KeyCode::Char('\\') => {
                         let size = size()?;
-                        editors.push(editor::Editor::new(
-                            size.1.into(),
-                            size.0.into(),
-                            ps.clone(),
-                        ));
+                        editors.push(Editor::new(size.1.into(), size.0.into(), ps.clone()));
                         let n = editors.len() - 1;
                         e = editors.get_mut(n).unwrap();
                     }
@@ -177,49 +184,49 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                     }
                     KeyCode::Left => {
                         e.move_cursor(
-                            editor::Movement::Relative(-dist, 0),
+                            Movement::Relative(-dist, 0),
                             event.modifiers.intersects(KeyModifiers::SHIFT),
                         );
                     }
                     KeyCode::Right => {
                         e.move_cursor(
-                            editor::Movement::Relative(dist, 0),
+                            Movement::Relative(dist, 0),
                             event.modifiers.intersects(KeyModifiers::SHIFT),
                         );
                     }
                     KeyCode::Up => {
                         e.move_cursor(
-                            editor::Movement::Relative(0, -dist),
+                            Movement::Relative(0, -dist),
                             event.modifiers.intersects(KeyModifiers::SHIFT),
                         );
                     }
                     KeyCode::Down => {
                         e.move_cursor(
-                            editor::Movement::Relative(0, dist),
+                            Movement::Relative(0, dist),
                             event.modifiers.intersects(KeyModifiers::SHIFT),
                         );
                     }
                     KeyCode::Home => {
                         e.move_cursor(
-                            editor::Movement::Home,
+                            Movement::Home,
                             event.modifiers.intersects(KeyModifiers::SHIFT),
                         );
                     }
                     KeyCode::End => {
                         e.move_cursor(
-                            editor::Movement::End,
+                            Movement::End,
                             event.modifiers.intersects(KeyModifiers::SHIFT),
                         );
                     }
                     KeyCode::PageUp => {
                         e.move_cursor(
-                            editor::Movement::PageUp,
+                            Movement::PageUp,
                             event.modifiers.intersects(KeyModifiers::SHIFT),
                         );
                     }
                     KeyCode::PageDown => {
                         e.move_cursor(
-                            editor::Movement::PageDown,
+                            Movement::PageDown,
                             event.modifiers.intersects(KeyModifiers::SHIFT),
                         );
                     }

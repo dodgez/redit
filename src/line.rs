@@ -1,4 +1,4 @@
-use crate::editor::RenderConfig;
+use crate::render_config::RenderConfig;
 
 #[derive(Clone)] // Needed in editor::Editor.get_text_region
 pub struct Line {
