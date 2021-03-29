@@ -6,19 +6,20 @@ A simple text editor written in rust.
 - Ctrl-Arrow key navigation
 - Select text with Shift
 - Multiple file buffers
-- Copy and Paste
+- Copy and Paste (not yet using system clipboard)
 - Highlight selected text
 - Syntax highlighting
+- Mouse support (dependent on terminal emulator)
 
 ### In-Progress
 Roughly listed in order of priority:
 - Undo and redo history (medium)
-- Mouse support (easy with crossterm?)
 - Directory opening (medium)
 - Refactor editor prompt for generic command input (hard)
 - Search (hard)
 - Better Ctrl-Arrow key navigation (medium)
 - Ask to reload file when changed on disk (hard)
+- Copy and paste using system clipboard
 
 ## Key-Bindings
 - `Ctrl-q` - quits the current editor (or program when in last editor)

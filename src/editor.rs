@@ -31,6 +31,7 @@ pub enum Movement {
     PageUp,
     PageDown,
     Absolute(usize, usize),
+    AbsoluteScreen(usize, usize),
     Relative(isize, isize),
 }
 
@@ -471,6 +472,18 @@ impl Editor {
             Movement::Absolute(x, y) => {
                 self.cy = min(y, self.rows.len() - 1); // There should be at least one row
                 self.cx = min(x, self.rows.get(self.cy).unwrap().get_raw().len());
+            }
+            Movement::AbsoluteScreen(x, y) => {
+                self.cy = min(self.row_offset + y, self.rows.len() - 1);
+                let row_len = self.rows.get(self.cy).unwrap().get_raw().len();
+                self.cx = min(
+                    if self.left_gutter_size > x {
+                        0
+                    } else {
+                        x - self.left_gutter_size
+                    },
+                    if row_len > 0 { row_len - 1 } else { 0 },
+                );
             }
             _ => {}
         }

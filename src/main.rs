@@ -1,7 +1,7 @@
 use clap::{App, Arg};
 use crossterm::{
     cursor::{Hide, MoveTo, RestorePosition, SavePosition, Show},
-    event::{read, Event, KeyCode, KeyModifiers},
+    event::{read, EnableMouseCapture, Event, KeyCode, KeyModifiers, MouseEventKind},
     execute,
     style::{Color, SetBackgroundColor, SetForegroundColor},
     terminal::{
@@ -63,7 +63,7 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
     e.draw(&mut stdout, theme)?;
     e.move_cursor(editor::Movement::BegFile, false);
     let cur_pos = e.get_rel_cursor();
-    execute!(stdout, MoveTo(cur_pos.0, cur_pos.1))?;
+    execute!(stdout, MoveTo(cur_pos.0, cur_pos.1), EnableMouseCapture)?;
 
     let mut clipboard = None;
 
@@ -84,6 +84,35 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                     SetForegroundColor(foreground_color)
                 )?;
             }
+            Event::Mouse(event) => match event.kind {
+                MouseEventKind::ScrollDown => {
+                    e.move_cursor(
+                        editor::Movement::Relative(0, 1),
+                        event.modifiers.intersects(KeyModifiers::SHIFT),
+                    );
+                }
+                MouseEventKind::ScrollUp => {
+                    e.move_cursor(
+                        editor::Movement::Relative(0, -1),
+                        event.modifiers.intersects(KeyModifiers::SHIFT),
+                    );
+                }
+                MouseEventKind::Down(_) => {
+                    e.move_cursor(
+                        editor::Movement::AbsoluteScreen(event.column as usize, event.row as usize),
+                        event.modifiers.intersects(KeyModifiers::SHIFT),
+                    );
+                }
+                MouseEventKind::Drag(_) => {
+                    e.move_cursor(
+                        editor::Movement::AbsoluteScreen(event.column as usize, event.row as usize),
+                        true,
+                    );
+                }
+                _ => {
+                    continue;
+                }
+            },
             Event::Key(event) => {
                 let dist = if event.modifiers.intersects(KeyModifiers::CONTROL) {
                     5
@@ -217,7 +246,6 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                     }
                 }
             }
-            _ => {}
         }
 
         let cur_pos = e.get_rel_cursor();
