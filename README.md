@@ -14,6 +14,7 @@ A simple text editor written in rust.
 Roughly listed in order of priority:
 - Undo and redo history (medium)
 - Mouse support (easy with crossterm?)
+- Directory opening (medium)
 - Refactor editor prompt for generic command input (hard)
 - Search (hard)
 - Better Ctrl-Arrow key navigation (medium)
