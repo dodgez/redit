@@ -9,14 +9,15 @@ use crossterm::{
         LeaveAlternateScreen,
     },
 };
-use syntect::highlighting::{Color as SynColor, ThemeSet};
+use syntect::{
+    highlighting::{Color as SynColor, ThemeSet},
+    parsing::SyntaxSet,
+};
 
 mod editor;
 
 fn edit(file: Option<&str>) -> crossterm::Result<()> {
-    // let mut ps = SyntaxSet::load_defaults_newlines().into_builder();
-    // ps.add_from_folder(std::path::Path::new("syntaxes"), true).unwrap();
-    // let ps = ps.build();
+    let ps = SyntaxSet::load_defaults_newlines();
     let theme = &ThemeSet::load_defaults().themes["Solarized (dark)"];
     let background_color = theme.settings.background.unwrap_or(SynColor::BLACK);
     let background_color = Color::Rgb {
@@ -41,6 +42,7 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
     let mut editors = vec![editor::Editor::new(
         initial_size.1.into(),
         initial_size.0.into(),
+        ps.clone(),
     )];
     let mut editor_index = 0;
     let mut e = editors.get_mut(editor_index).unwrap();
@@ -118,7 +120,11 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                     }
                     KeyCode::Char('\\') => {
                         let size = size()?;
-                        editors.push(editor::Editor::new(size.1.into(), size.0.into()));
+                        editors.push(editor::Editor::new(
+                            size.1.into(),
+                            size.0.into(),
+                            ps.clone(),
+                        ));
                         let n = editors.len() - 1;
                         e = editors.get_mut(n).unwrap();
                     }

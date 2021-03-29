@@ -8,10 +8,10 @@ A simple text editor written in rust.
 - Multiple file buffers
 - Copy and Paste
 - Highlight selected text
+- Syntax highlighting
 
 ### In-Progress
 Roughly listed in order of priority:
-- Syntax highlighting (hard)
 - Undo and redo history (medium)
 - Mouse support (easy with crossterm?)
 - Refactor editor prompt for generic command input (hard)

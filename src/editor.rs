@@ -8,7 +8,12 @@ use std::path::{Path, PathBuf};
 
 use chrono::Local;
 use crossterm::{execute, style::Color, style::SetBackgroundColor, style::SetForegroundColor};
-use syntect::highlighting::{Color as SynColor, Theme};
+use syntect::{
+    easy::HighlightLines,
+    highlighting::{Color as SynColor, FontStyle, Style, StyleModifier, Theme},
+    parsing::SyntaxSet,
+    util::{as_24_bit_terminal_escaped, modify_range},
+};
 
 mod editor_prompt;
 mod line;
@@ -50,6 +55,7 @@ pub struct Editor {
     rx: usize,
     screen_cols: usize,
     screen_rows: usize,
+    syntaxes: SyntaxSet,
 }
 
 // Essentially just replaces tabs with 4 spaces
@@ -74,9 +80,10 @@ fn set_stdout_color<W: Write>(
 }
 
 impl Editor {
-    pub fn new(rows: usize, cols: usize) -> Self {
+    pub fn new(rows: usize, cols: usize, syntaxes: SyntaxSet) -> Self {
         let mut e = Editor {
             rows: vec![Line::new("Redit version 0.1.0".to_string())],
+            syntaxes,
             ..Editor::default()
         };
         e.resize(cols, rows);
@@ -183,6 +190,23 @@ impl Editor {
             g: fg.g,
             b: fg.b,
         };
+        let default_style = Style {
+            background: bg,
+            foreground: fg,
+            font_style: FontStyle::empty(),
+        };
+        let highlight_style = StyleModifier {
+            background: Some(fg),
+            foreground: Some(bg),
+            font_style: None,
+        };
+
+        let syntax = self
+            .file_path
+            .as_ref()
+            .and_then(|f| f.extension())
+            .and_then(|e| self.syntaxes.find_syntax_by_extension(&e.to_string_lossy()));
+
         for y in self.row_offset..min(self.rows.len(), self.row_offset + self.screen_rows + 1) {
             let gutter_size = (if y < 2 { 2 } else { 2 + y } as f32).log10().ceil() as usize; // 2+ so line numbers start at 1
             stdout.write_all(
@@ -203,56 +227,56 @@ impl Editor {
             if len > self.screen_cols {
                 len = self.screen_cols;
             }
-            let row = col_split.split_at(len).0;
+
+            let mut write_escaped = |s: &[(Style, &str)]| {
+                stdout.write_all(as_24_bit_terminal_escaped(&s, true).as_bytes())
+            };
+
+            let mut h = syntax.map(|s| HighlightLines::new(s, theme));
+            let raw_row = col_split.split_at(len).0;
+            let row = if let Some(mut h) = h {
+                h.highlight(raw_row, &self.syntaxes)
+            } else {
+                vec![(default_style, raw_row)]
+            };
             if self.highlighting && y >= min(self.cy, self.hy) && y <= max(self.cy, self.hy) {
                 if self.cy == self.hy {
                     if self.cx < self.hx {
-                        let split = row.split_at(self.hx);
-                        stdout.write_all(split.0.split_at(self.cx).0.as_bytes())?;
-                        set_stdout_color(stdout, fg_color, bg_color)?;
-                        stdout.write_all(split.0.split_at(self.cx).1.as_bytes())?;
-                        set_stdout_color(stdout, bg_color, fg_color)?;
-                        stdout.write_all(split.1.as_bytes())?;
+                        write_escaped(&modify_range(&row, self.cx..self.hx, highlight_style))?;
                     } else {
-                        let split = row.split_at(self.cx);
-                        stdout.write_all(split.0.split_at(self.hx).0.as_bytes())?;
-                        set_stdout_color(stdout, fg_color, bg_color)?;
-                        stdout.write_all(split.0.split_at(self.hx).1.as_bytes())?;
-                        set_stdout_color(stdout, bg_color, fg_color)?;
-                        stdout.write_all(split.1.as_bytes())?;
+                        write_escaped(&modify_range(&row, self.hx..self.cx, highlight_style))?;
                     }
                 } else if y == min(self.cy, self.hy) {
                     if self.cy < self.hy {
-                        stdout.write_all(row.split_at(self.cx).0.as_bytes())?;
-                        set_stdout_color(stdout, fg_color, bg_color)?;
-                        stdout.write_all(row.split_at(self.cx).1.as_bytes())?;
-                        set_stdout_color(stdout, bg_color, fg_color)?;
+                        write_escaped(&modify_range(
+                            &row,
+                            self.cx..raw_row.len(),
+                            highlight_style,
+                        ))?;
                     } else {
-                        stdout.write_all(row.split_at(self.hx).0.as_bytes())?;
-                        set_stdout_color(stdout, fg_color, bg_color)?;
-                        stdout.write_all(row.split_at(self.hx).1.as_bytes())?;
-                        set_stdout_color(stdout, bg_color, fg_color)?;
+                        write_escaped(&modify_range(
+                            &row,
+                            self.hx..raw_row.len(),
+                            highlight_style,
+                        ))?;
                     }
                 } else if y == max(self.cy, self.hy) {
                     if self.cy < self.hy {
-                        set_stdout_color(stdout, fg_color, bg_color)?;
-                        stdout.write_all(row.split_at(self.hx).0.as_bytes())?;
-                        set_stdout_color(stdout, bg_color, fg_color)?;
-                        stdout.write_all(row.split_at(self.hx).1.as_bytes())?;
+                        write_escaped(&modify_range(&row, 0..self.hx, highlight_style))?;
                     } else {
-                        set_stdout_color(stdout, fg_color, bg_color)?;
-                        stdout.write_all(row.split_at(self.cx).0.as_bytes())?;
-                        set_stdout_color(stdout, bg_color, fg_color)?;
-                        stdout.write_all(row.split_at(self.cx).1.as_bytes())?;
+                        write_escaped(&modify_range(&row, 0..self.cx, highlight_style))?;
                     }
                 } else {
-                    set_stdout_color(stdout, fg_color, bg_color)?;
-                    stdout.write_all(row.as_bytes())?;
-                    set_stdout_color(stdout, bg_color, fg_color)?;
+                    write_escaped(&modify_range(&row, 0..raw_row.len(), highlight_style))?;
                 }
             } else {
-                stdout.write_all(row.as_bytes())?;
+                stdout.write_all(as_24_bit_terminal_escaped(&row, true).as_bytes())?;
             }
+            execute!(
+                stdout,
+                SetBackgroundColor(bg_color),
+                SetForegroundColor(fg_color)
+            )?;
 
             stdout.write_all(b"\x1b[K")?; // Clear line
             stdout.write_all(b"\r\n")?;
