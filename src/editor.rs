@@ -211,8 +211,8 @@ impl Editor {
             stdout.write_all(
                 format!(
                     "{}{}|",
-                    y + 1, // Line numbering starts at 1
-                    " ".repeat(self.left_gutter_size - gutter_size - 1) // Get difference not including separator
+                    " ".repeat(self.left_gutter_size - gutter_size - 1), // Get difference not including separator
+                    y + 1 // Line numbering starts at 1
                 )
                 .as_bytes(),
             );
