@@ -142,6 +142,12 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                             }
                         }
                     }
+                    KeyCode::Char('z') if event.modifiers == KeyModifiers::CONTROL => {
+                        e.undo();
+                    }
+                    KeyCode::Char('y') if event.modifiers == KeyModifiers::CONTROL => {
+                        e.redo();
+                    }
                     KeyCode::Char('[') => {
                         if editor_index == 0 {
                             editor_index = editors.len() - 1;

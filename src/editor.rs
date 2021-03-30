@@ -15,7 +15,6 @@ use syntect::{
     util::{as_24_bit_terminal_escaped, modify_range},
 };
 
-use crate::action::Action;
 use crate::buffer::Buffer;
 use crate::line::Line;
 use crate::prompt::{Prompt, PromptPurpose};
@@ -501,10 +500,10 @@ impl Editor {
     fn remove_highlight(&mut self) {
         if self.cy < self.hy || (self.cy == self.hy && self.cx <= self.hx) {
             self.buffer
-                .remove_region((self.cx, self.cy), (self.hx, self.hy));
+                .remove_region((self.cx, self.cy), (self.hx, self.hy), true);
         } else {
             self.buffer
-                .remove_region((self.hx, self.hy), (self.cx, self.cy));
+                .remove_region((self.hx, self.hy), (self.cx, self.cy), true);
             self.move_cursor(Movement::Absolute(self.hx, self.hy), false);
         }
     }
@@ -513,7 +512,7 @@ impl Editor {
         if self.prompt.is_active() {
             self.prompt.add_char(c);
         } else if self.cy < self.buffer.get_line_count() {
-            self.buffer.insert_char(self.cy, self.cx, c);
+            self.buffer.insert_char(self.cy, self.cx, c, true);
             self.move_cursor(Movement::Relative(1, 0), false);
             self.make_dirty();
         }
@@ -528,7 +527,7 @@ impl Editor {
             self.highlighting = false;
             self.make_dirty();
         } else if self.cy < self.buffer.get_line_count()
-            && self.buffer.delete_char(self.cy, self.cx)
+            && self.buffer.delete_char(self.cy, self.cx, true)
         {
             self.make_dirty();
         }
@@ -553,7 +552,7 @@ impl Editor {
                 self.make_dirty();
             }
             if self.cy < self.buffer.get_line_count() {
-                self.buffer.split_line(self.cy, self.cx);
+                self.buffer.split_line(self.cy, self.cx, true);
                 self.move_cursor(Movement::Relative(0, 1), false);
                 self.move_cursor(Movement::Home, false);
                 self.make_dirty();
@@ -592,7 +591,9 @@ impl Editor {
                 self.highlighting = false;
             }
             if self.cy < self.buffer.get_line_count() {
-                let new_pos = self.buffer.insert_region((self.cx, self.cy), clipboard);
+                let new_pos = self
+                    .buffer
+                    .insert_region((self.cx, self.cy), clipboard, true);
                 self.move_cursor(Movement::Absolute(new_pos.0, new_pos.1), false);
             }
             self.make_dirty();
@@ -627,6 +628,14 @@ impl Editor {
         self.confirm_dirty = false;
         self.prompt.exit();
         self.message = None;
+    }
+
+    pub fn undo(&mut self) {
+        self.buffer.undo();
+    }
+
+    pub fn redo(&mut self) {
+        self.buffer.redo();
     }
 
     fn make_dirty(&mut self) {

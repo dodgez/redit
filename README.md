@@ -10,10 +10,10 @@ A simple text editor written in rust.
 - Highlight selected text
 - Syntax highlighting
 - Mouse support (dependent on terminal emulator)
+- Undo and redo history
 
 ### In-Progress
 Roughly listed in order of priority:
-- Undo and redo history (medium)
 - Directory opening (medium)
 - Refactor editor prompt for generic command input (hard)
 - Search (hard)
