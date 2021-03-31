@@ -534,9 +534,9 @@ impl Editor {
             Movement::PageUp => {
                 let rel = self.cy - self.row_offset;
                 self.cy = self.row_offset;
-                let rollback = self.row_offset >= self.screen_rows;
+                let rollback = self.row_offset >= self.draw_area.height as usize;
                 self.move_cursor(
-                    Movement::Relative(0, 0 - (self.screen_rows as isize)),
+                    Movement::Relative(0, 0 - (self.draw_area.height as isize)),
                     with_highlight,
                 );
                 if rollback {
@@ -545,15 +545,15 @@ impl Editor {
             }
             Movement::PageDown => {
                 let rel = self.cy - self.row_offset;
-                self.cy = self.row_offset + self.screen_rows;
+                self.cy = self.row_offset + self.draw_area.height as usize;
                 let rollback = self.cy < self.buffer.get_line_count() - 1; // -1 because row_offset can never get bigger
                 self.move_cursor(
-                    Movement::Relative(0, self.screen_rows as isize),
+                    Movement::Relative(0, self.draw_area.height as isize),
                     with_highlight,
                 );
                 if rollback {
                     self.move_cursor(
-                        Movement::Relative(0, 0 - (self.screen_rows - rel) as isize),
+                        Movement::Relative(0, 0 - (self.draw_area.height as usize - rel) as isize),
                         with_highlight,
                     );
                 }
