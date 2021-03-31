@@ -280,16 +280,16 @@ impl Editor {
     pub fn try_reload(&mut self) -> std::io::Result<()> {
         if !self.buffer.is_dirty() || self.confirm_dirty {
             if let Some(file) = self.file_path.clone() {
-                self.open_file(&file)
+                self.open_file(&file)?;
+                self.set_message(&"File reloaded from disk");
             } else {
                 self.set_message(&"No file to reload");
-                Ok(())
             }
         } else {
             self.confirm_dirty = true;
             self.set_message(&"Press Ctrl-r again to reload from disk");
-            Ok(())
         }
+        Ok(())
     }
 
     pub fn load_theme(&mut self, theme: Theme) {
