@@ -199,7 +199,12 @@ impl tui::widgets::Widget for &mut Editor {
                     buf.set_stringn(
                         inner_area.x,
                         inner_area.y + y as u16,
-                        line,
+                        format!(
+                            "{}{}|{}",
+                            " ".repeat((max_gutter_size - gutter_size) as usize),
+                            line_number + 1,
+                            line
+                        ),
                         inner_area.width as usize - max_gutter_size as usize - 1, // Account for line numbers
                         tui::style::Style::default(),
                     );
