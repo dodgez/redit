@@ -68,6 +68,11 @@ impl tui::widgets::Widget for &mut Editor {
         let bg_color = TuiColor::Rgb(bg.r, bg.g, bg.b);
         let fg = self.theme.settings.foreground.unwrap_or(SynColor::WHITE);
         let fg_color = TuiColor::Rgb(fg.r, fg.g, fg.b);
+        let default_style = Style::default().apply(StyleModifier {
+            background: Some(bg),
+            foreground: Some(fg),
+            font_style: None,
+        });
         let highlight_style = StyleModifier {
             background: Some(fg),
             foreground: Some(bg),
@@ -115,78 +120,63 @@ impl tui::widgets::Widget for &mut Editor {
                 };
 
                 let mut h = syntax.map(|s| HighlightLines::new(s, &self.theme));
-                if let Some(mut h) = h {
-                    let mut line = h.highlight(raw_line, &self.syntaxes);
-                    if self.highlighting && y >= min(self.cy, self.hy) && y <= max(self.cy, self.hy)
-                    {
-                        if self.cy == self.hy {
-                            if self.cx < self.hx {
-                                line = modify_range(&line, self.cx..self.hx, highlight_style);
-                            } else {
-                                line = modify_range(&line, self.hx..self.cx, highlight_style);
-                            }
-                        } else if y == min(self.cy, self.hy) {
-                            if self.cy < self.hy {
-                                line =
-                                    modify_range(&line, self.cx..raw_line.len(), highlight_style);
-                            } else {
-                                line =
-                                    modify_range(&line, self.hx..raw_line.len(), highlight_style);
-                            }
-                        } else if y == max(self.cy, self.hy) {
-                            if self.cy < self.hy {
-                                line = modify_range(&line, 0..self.hx, highlight_style);
-                            } else {
-                                line = modify_range(&line, 0..self.cx, highlight_style);
-                            }
+                let mut line = h.map(|mut h| h.highlight(raw_line, &self.syntaxes)).unwrap_or_else(|| vec![(default_style, raw_line)]);
+                if self.highlighting && y >= min(self.cy, self.hy) && y <= max(self.cy, self.hy)
+                {
+                    if self.cy == self.hy {
+                        if self.cx < self.hx {
+                            line = modify_range(&line, self.cx..self.hx, highlight_style);
                         } else {
-                            line = modify_range(&line, 0..raw_line.len(), highlight_style);
+                            line = modify_range(&line, self.hx..self.cx, highlight_style);
                         }
+                    } else if y == min(self.cy, self.hy) {
+                        if self.cy < self.hy {
+                            line =
+                                modify_range(&line, self.cx..raw_line.len(), highlight_style);
+                        } else {
+                            line =
+                                modify_range(&line, self.hx..raw_line.len(), highlight_style);
+                        }
+                    } else if y == max(self.cy, self.hy) {
+                        if self.cy < self.hy {
+                            line = modify_range(&line, 0..self.hx, highlight_style);
+                        } else {
+                            line = modify_range(&line, 0..self.cx, highlight_style);
+                        }
+                    } else {
+                        line = modify_range(&line, 0..raw_line.len(), highlight_style);
                     }
-                    let line = tui::text::Spans::from(
-                        line.iter()
-                            .map(|(style, text)| {
-                                let fg_rgb = style.foreground;
-                                let bg_rgb = style.background;
-                                tui::text::Span {
-                                    content: std::borrow::Cow::Borrowed(text),
-                                    style: tui::style::Style::default()
-                                        .fg(TuiColor::Rgb(fg_rgb.r, fg_rgb.g, fg_rgb.b))
-                                        .bg(TuiColor::Rgb(bg_rgb.r, bg_rgb.g, bg_rgb.b)),
-                                }
-                            })
-                            .collect::<Vec<tui::text::Span>>(),
-                    );
-                    buf.set_string(
-                        inner_area.x,
-                        inner_area.y + y as u16,
-                        format!(
-                            "{}{}|",
-                            " ".repeat((max_gutter_size - gutter_size) as usize),
-                            line_number + 1
-                        ),
-                        tui::style::Style::default(),
-                    );
-                    buf.set_spans(
-                        inner_area.x + max_gutter_size as u16 + 1,
-                        inner_area.y + y as u16,
-                        &line,
-                        inner_area.width as u16 - max_gutter_size as u16 - 1,
-                    );
-                } else {
-                    buf.set_stringn(
-                        inner_area.x,
-                        inner_area.y + y as u16,
-                        format!(
-                            "{}{}|{}",
-                            " ".repeat((max_gutter_size - gutter_size) as usize),
-                            line_number + 1,
-                            line
-                        ),
-                        inner_area.width as usize - max_gutter_size as usize - 1, // Account for line numbers
-                        tui::style::Style::default(),
-                    );
-                };
+                }
+                let line = tui::text::Spans::from(
+                    line.iter()
+                        .map(|(style, text)| {
+                            let fg_rgb = style.foreground;
+                            let bg_rgb = style.background;
+                            tui::text::Span {
+                                content: std::borrow::Cow::Borrowed(text),
+                                style: tui::style::Style::default()
+                                    .fg(TuiColor::Rgb(fg_rgb.r, fg_rgb.g, fg_rgb.b))
+                                    .bg(TuiColor::Rgb(bg_rgb.r, bg_rgb.g, bg_rgb.b)),
+                            }
+                        })
+                        .collect::<Vec<tui::text::Span>>(),
+                );
+                buf.set_string(
+                    inner_area.x,
+                    inner_area.y + y as u16,
+                    format!(
+                        "{}{}|",
+                        " ".repeat((max_gutter_size - gutter_size) as usize),
+                        line_number + 1
+                    ),
+                    tui::style::Style::default(),
+                );
+                buf.set_spans(
+                    inner_area.x + max_gutter_size as u16 + 1,
+                    inner_area.y + y as u16,
+                    &line,
+                    inner_area.width as u16 - max_gutter_size as u16 - 1,
+                );
             }
         }
     }
