@@ -101,10 +101,7 @@ impl Widget for &mut Editor {
         block.render(area, buf);
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Min(inner_area.height - 2),
-                Constraint::Min(2),
-            ])
+            .constraints([Constraint::Min(inner_area.height - 2), Constraint::Min(2)])
             .split(inner_area);
         self.draw_area = chunks[0];
         let syntax = self
@@ -193,13 +190,14 @@ impl Widget for &mut Editor {
         }
 
         // Draw the message
-        let p = Paragraph::new(Span::raw(self.message.as_ref().map(|s| s.to_string()).unwrap_or_else(|| "[No Message]".to_string())))
-            .block(
-                Block::default()
-                    .title("Message ")
-                    .borders(Borders::TOP),
-            )
-            .wrap(Wrap { trim: true });
+        let p = Paragraph::new(Span::raw(
+            self.message
+                .as_ref()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "[No Message]".to_string()),
+        ))
+        .block(Block::default().title("Message ").borders(Borders::TOP))
+        .wrap(Wrap { trim: true });
         p.render(chunks[1], buf);
     }
 }
