@@ -14,7 +14,13 @@ use syntect::{
     parsing::SyntaxSet,
     util::modify_range,
 };
-use tui::{layout::Rect, style::Color as TuiColor};
+use tui::{
+    buffer::Buffer as TuiBuffer,
+    layout::{Constraint, Direction, Layout, Rect},
+    style::{Color as TuiColor, Style as TuiStyle},
+    text::{Span, Spans},
+    widgets::{Block, Borders, Paragraph, Widget, Wrap},
+};
 
 use crate::buffer::Buffer;
 use crate::line::Line;
@@ -62,8 +68,8 @@ fn convert_cx_to_rx(line: &Line, cx: usize, render_opts: &RenderConfig) -> usize
     }
 }
 
-impl tui::widgets::Widget for &mut Editor {
-    fn render(self, area: tui::layout::Rect, buf: &mut tui::buffer::Buffer) {
+impl Widget for &mut Editor {
+    fn render(self, area: Rect, buf: &mut TuiBuffer) {
         let bg = self.theme.settings.background.unwrap_or(SynColor::BLACK);
         let bg_color = TuiColor::Rgb(bg.r, bg.g, bg.b);
         let fg = self.theme.settings.foreground.unwrap_or(SynColor::WHITE);
@@ -79,7 +85,7 @@ impl tui::widgets::Widget for &mut Editor {
             font_style: None,
         };
 
-        let block = tui::widgets::Block::default()
+        let block = Block::default()
             .title(format!(
                 "{} L{}:C{}",
                 self.file_path
@@ -89,11 +95,18 @@ impl tui::widgets::Widget for &mut Editor {
                 self.cy + 1,
                 self.cx + 1
             ))
-            .borders(tui::widgets::Borders::ALL)
-            .style(tui::style::Style::default().fg(fg_color).bg(bg_color));
+            .borders(Borders::ALL)
+            .style(TuiStyle::default().fg(fg_color).bg(bg_color));
         let inner_area = block.inner(area);
         block.render(area, buf);
-        self.draw_area = inner_area;
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Min(inner_area.height - 2),
+                Constraint::Min(2),
+            ])
+            .split(inner_area);
+        self.draw_area = chunks[0];
         let syntax = self
             .file_path
             .as_ref()
@@ -103,7 +116,7 @@ impl tui::widgets::Widget for &mut Editor {
         let max_gutter_size = (if lines < 2 { 2 } else { lines + 1 } as f32)
             .log10()
             .ceil();
-        for y in 0..inner_area.height as usize {
+        for y in 0..self.draw_area.height as usize {
             if let Some(line) = self
                 .buffer
                 .get_line(self.row_offset + y)
@@ -120,9 +133,10 @@ impl tui::widgets::Widget for &mut Editor {
                 };
 
                 let mut h = syntax.map(|s| HighlightLines::new(s, &self.theme));
-                let mut line = h.map(|mut h| h.highlight(raw_line, &self.syntaxes)).unwrap_or_else(|| vec![(default_style, raw_line)]);
-                if self.highlighting && y >= min(self.cy, self.hy) && y <= max(self.cy, self.hy)
-                {
+                let mut line = h
+                    .map(|mut h| h.highlight(raw_line, &self.syntaxes))
+                    .unwrap_or_else(|| vec![(default_style, raw_line)]);
+                if self.highlighting && y >= min(self.cy, self.hy) && y <= max(self.cy, self.hy) {
                     if self.cy == self.hy {
                         if self.cx < self.hx {
                             line = modify_range(&line, self.cx..self.hx, highlight_style);
@@ -131,11 +145,9 @@ impl tui::widgets::Widget for &mut Editor {
                         }
                     } else if y == min(self.cy, self.hy) {
                         if self.cy < self.hy {
-                            line =
-                                modify_range(&line, self.cx..raw_line.len(), highlight_style);
+                            line = modify_range(&line, self.cx..raw_line.len(), highlight_style);
                         } else {
-                            line =
-                                modify_range(&line, self.hx..raw_line.len(), highlight_style);
+                            line = modify_range(&line, self.hx..raw_line.len(), highlight_style);
                         }
                     } else if y == max(self.cy, self.hy) {
                         if self.cy < self.hy {
@@ -147,38 +159,48 @@ impl tui::widgets::Widget for &mut Editor {
                         line = modify_range(&line, 0..raw_line.len(), highlight_style);
                     }
                 }
-                let line = tui::text::Spans::from(
+                let line = Spans::from(
                     line.iter()
                         .map(|(style, text)| {
                             let fg_rgb = style.foreground;
                             let bg_rgb = style.background;
-                            tui::text::Span {
+                            Span {
                                 content: std::borrow::Cow::Borrowed(text),
-                                style: tui::style::Style::default()
+                                style: TuiStyle::default()
                                     .fg(TuiColor::Rgb(fg_rgb.r, fg_rgb.g, fg_rgb.b))
                                     .bg(TuiColor::Rgb(bg_rgb.r, bg_rgb.g, bg_rgb.b)),
                             }
                         })
-                        .collect::<Vec<tui::text::Span>>(),
+                        .collect::<Vec<Span>>(),
                 );
                 buf.set_string(
-                    inner_area.x,
-                    inner_area.y + y as u16,
+                    self.draw_area.x,
+                    self.draw_area.y + y as u16,
                     format!(
-                        "{}{}|",
+                        "{}{}| ",
                         " ".repeat((max_gutter_size - gutter_size) as usize),
                         line_number + 1
                     ),
-                    tui::style::Style::default(),
+                    TuiStyle::default(),
                 );
                 buf.set_spans(
-                    inner_area.x + max_gutter_size as u16 + 1,
-                    inner_area.y + y as u16,
+                    self.draw_area.x + max_gutter_size as u16 + 2, //+1 for pipe and space
+                    self.draw_area.y + y as u16,
                     &line,
-                    inner_area.width as u16 - max_gutter_size as u16 - 1,
+                    self.draw_area.width as u16 - max_gutter_size as u16 - 2, // -1 for pipe and space
                 );
             }
         }
+
+        // Draw the message
+        let p = Paragraph::new(Span::raw(self.message.as_ref().map(|s| s.to_string()).unwrap_or_else(|| "[No Message]".to_string())))
+            .block(
+                Block::default()
+                    .title("Message ")
+                    .borders(Borders::TOP),
+            )
+            .wrap(Wrap { trim: true });
+        p.render(chunks[1], buf);
     }
 }
 
@@ -282,8 +304,7 @@ impl Editor {
             .log10()
             .ceil();
         (
-            (self.rx - self.col_offset + max_gutter_size as usize + 1) as u16
-                + self.draw_area.x,
+            (self.rx - self.col_offset + max_gutter_size as usize + 2) as u16 + self.draw_area.x, // +2 for pipe and space
             (self.cy - self.row_offset) as u16 + self.draw_area.y,
         )
     }
@@ -455,14 +476,14 @@ impl Editor {
 
     pub fn backspace_char(&mut self) {
         if self.highlighting {
-                self.remove_highlight();
-                self.highlighting = false;
-            }
-            if self.cx > 0 || self.cy > 0 {
-                self.move_cursor(Movement::Relative(-1, 0), false);
-                self.delete_char();
-                self.confirm_dirty = false;
-            }
+            self.remove_highlight();
+            self.highlighting = false;
+        }
+        if self.cx > 0 || self.cy > 0 {
+            self.move_cursor(Movement::Relative(-1, 0), false);
+            self.delete_char();
+            self.confirm_dirty = false;
+        }
     }
 
     pub fn do_return(&mut self) {
