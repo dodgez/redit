@@ -4,9 +4,7 @@ use clap::{App, Arg};
 use crossterm::{
     event::{read, EnableMouseCapture, Event, KeyCode, KeyModifiers, MouseEventKind},
     execute,
-    terminal::{
-        disable_raw_mode, enable_raw_mode, size, EnterAlternateScreen, LeaveAlternateScreen,
-    },
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     ExecutableCommand,
 };
 use dirs::home_dir;
@@ -27,18 +25,7 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
     let ps = ps.build();
     let theme = &ThemeSet::load_defaults().themes["Solarized (dark)"];
 
-    #[cfg(target_family = "windows")]
-    let initial_size = size()?;
-    #[cfg(target_family = "unix")]
-    let initial_size = {
-        let size = size()?;
-        (size.0 - 1, size.1 - 1)
-    };
-    let mut editors = vec![Editor::new(
-        initial_size.1.into(),
-        initial_size.0.into(),
-        ps.clone(),
-    )];
+    let mut editors = vec![Editor::new(ps.clone())];
     let mut editor_index = 0;
     let mut e = editors.get_mut(editor_index).unwrap();
     e.load_theme(theme.clone());
@@ -155,8 +142,7 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                         e = editors.get_mut(editor_index).unwrap();
                     }
                     KeyCode::Char('\\') => {
-                        let size = size()?;
-                        editors.push(Editor::new(size.1.into(), size.0.into(), ps.clone()));
+                        editors.push(Editor::new(ps.clone()));
                         let n = editors.len() - 1;
                         e = editors.get_mut(n).unwrap();
                         e.load_theme(theme.clone());

@@ -14,10 +14,7 @@ use syntect::{
     parsing::SyntaxSet,
     util::{as_24_bit_terminal_escaped, modify_range},
 };
-use tui::{
-    style::Color as TuiColor,
-    layout::Rect,
-};
+use tui::{layout::Rect, style::Color as TuiColor};
 
 use crate::buffer::Buffer;
 use crate::line::Line;
@@ -44,7 +41,6 @@ pub struct Editor {
     confirm_dirty: bool,
     cx: usize,
     cy: usize,
-    dirty: bool,
     file_path: Option<PathBuf>,
     highlighting: bool,
     hx: usize,
@@ -56,8 +52,6 @@ pub struct Editor {
     render_opts: RenderConfig,
     row_offset: usize,
     rx: usize,
-    screen_cols: usize,
-    screen_rows: usize,
     syntaxes: SyntaxSet,
     theme: Theme,
 }
@@ -215,14 +209,12 @@ impl tui::widgets::Widget for &mut Editor {
 }
 
 impl Editor {
-    pub fn new(rows: usize, cols: usize, syntaxes: SyntaxSet) -> Self {
-        let mut e = Editor {
+    pub fn new(syntaxes: SyntaxSet) -> Self {
+        Editor {
             buffer: Buffer::new(vec![Line::new("Redit version 0.1.0".to_string())]),
             syntaxes,
             ..Editor::default()
-        };
-        e.resize(cols, rows);
-        e
+        }
     }
 
     pub fn open_file(&mut self, file_name: &dyn AsRef<Path>) -> std::io::Result<()> {
@@ -244,17 +236,15 @@ impl Editor {
             file_name = path;
         }
         self.buffer = Buffer::new(rows);
-        self.update_left_gutter();
         self.file_path = Some(file_name);
         self.set_message(&"File opened.");
-        self.dirty = false;
         self.confirm_dirty = false;
 
         Ok(())
     }
 
     pub fn open(&mut self) {
-        if !self.dirty || self.confirm_dirty {
+        if !self.buffer.is_dirty() || self.confirm_dirty {
             self.prompt = Prompt::new("File to open".to_string(), PromptPurpose::Open);
         } else {
             self.confirm_dirty = true;
@@ -274,7 +264,7 @@ impl Editor {
             let contents = self.buffer.get_all();
             br.write_all(contents.as_bytes())?;
             self.set_message(&"File saved.");
-            self.dirty = false;
+            self.buffer.set_clean();
             self.confirm_dirty = false;
         } else {
             self.prompt = Prompt::new("New file name".to_string(), PromptPurpose::Save);
@@ -284,7 +274,7 @@ impl Editor {
     }
 
     pub fn try_quit(&mut self) -> bool {
-        if !self.dirty || self.confirm_dirty {
+        if !self.buffer.is_dirty() || self.confirm_dirty {
             true
         } else {
             self.confirm_dirty = true;
@@ -294,7 +284,7 @@ impl Editor {
     }
 
     pub fn try_reload(&mut self) -> std::io::Result<()> {
-        if !self.dirty || self.confirm_dirty {
+        if !self.buffer.is_dirty() || self.confirm_dirty {
             if let Some(file) = self.file_path.clone() {
                 self.open_file(&file)
             } else {
@@ -474,18 +464,6 @@ impl Editor {
     //     Ok(())
     // }
 
-    pub fn resize(&mut self, width: usize, height: usize) {
-        let bottom_gutter_size = Self::calculate_bottom_gutter();
-        self.screen_rows = height - bottom_gutter_size;
-        self.left_gutter_size = Self::calculate_left_gutter(
-            self.row_offset,
-            self.screen_rows,
-            self.buffer.get_line_count(),
-        );
-        self.screen_cols = width - self.left_gutter_size;
-        self.scroll();
-    }
-
     pub fn get_rel_cursor(&self) -> (u16, u16) {
         if !self.prompt.is_active() {
             let lines = self.buffer.get_line_count();
@@ -493,20 +471,24 @@ impl Editor {
                 .log10()
                 .ceil();
             (
-                (self.rx - self.col_offset + max_gutter_size as usize + 1) as u16 + self.draw_area.x,
+                (self.rx - self.col_offset + max_gutter_size as usize + 1) as u16
+                    + self.draw_area.x,
                 (self.cy - self.row_offset) as u16 + self.draw_area.y,
             )
         } else {
-            let message_length = if let Some(message) = &self.message {
-                format!("Message at {} ", message).len()
-            } else {
-                "[No Messages] ".len()
-            };
-            (
-                message_length as u16 + self.prompt.get_length(),
-                self.screen_rows as u16 + 2, // +2 because prompt is on second line
-            )
+            (0, 0)
         }
+        // } else {
+        //     let message_length = if let Some(message) = &self.message {
+        //         format!("Message at {} ", message).len()
+        //     } else {
+        //         "[No Messages] ".len()
+        //     };
+        //     (
+        //         message_length as u16 + self.prompt.get_length(),
+        //         self.screen_rows as u16 + 2, // +2 because prompt is on second line
+        //     )
+        // }
     }
 
     pub fn move_cursor(&mut self, pos: Movement, with_highlight: bool) {
@@ -639,17 +621,18 @@ impl Editor {
         }
 
         self.scroll();
-        self.update_left_gutter();
     }
 
     fn remove_highlight(&mut self) {
         if self.cy < self.hy || (self.cy == self.hy && self.cx <= self.hx) {
             self.buffer
                 .remove_region((self.cx, self.cy), (self.hx, self.hy), true);
+            self.confirm_dirty = false;
         } else {
             self.buffer
                 .remove_region((self.hx, self.hy), (self.cx, self.cy), true);
             self.move_cursor(Movement::Absolute(self.hx, self.hy), false);
+            self.confirm_dirty = false;
         }
     }
 
@@ -659,7 +642,7 @@ impl Editor {
         } else if self.cy < self.buffer.get_line_count() {
             self.buffer.insert_char(self.cy, self.cx, c, true);
             self.move_cursor(Movement::Relative(1, 0), false);
-            self.make_dirty();
+            self.confirm_dirty = false;
         }
     }
 
@@ -670,11 +653,9 @@ impl Editor {
         if self.highlighting {
             self.remove_highlight();
             self.highlighting = false;
-            self.make_dirty();
-        } else if self.cy < self.buffer.get_line_count()
-            && self.buffer.delete_char(self.cy, self.cx, true)
-        {
-            self.make_dirty();
+        } else if self.cy < self.buffer.get_line_count() {
+            self.buffer.delete_char(self.cy, self.cx, true);
+            self.confirm_dirty = false;
         }
     }
 
@@ -685,12 +666,11 @@ impl Editor {
             if self.highlighting {
                 self.remove_highlight();
                 self.highlighting = false;
-                self.make_dirty();
             }
             if self.cx > 0 || self.cy > 0 {
                 self.move_cursor(Movement::Relative(-1, 0), false);
                 self.delete_char();
-                self.make_dirty();
+                self.confirm_dirty = false;
             }
         }
     }
@@ -702,13 +682,11 @@ impl Editor {
             if self.highlighting {
                 self.remove_highlight();
                 self.highlighting = false;
-                self.make_dirty();
             }
             if self.cy < self.buffer.get_line_count() {
                 self.buffer.split_line(self.cy, self.cx, true);
                 self.move_cursor(Movement::Relative(0, 1), false);
                 self.move_cursor(Movement::Home, false);
-                self.make_dirty();
             }
         }
     }
@@ -718,7 +696,6 @@ impl Editor {
         if self.highlighting {
             self.remove_highlight();
             self.highlighting = false;
-            self.make_dirty();
         }
         clipboard
     }
@@ -748,8 +725,8 @@ impl Editor {
                     .buffer
                     .insert_region((self.cx, self.cy), clipboard, true);
                 self.move_cursor(Movement::Absolute(new_pos.0, new_pos.1), false);
+                self.confirm_dirty = false;
             }
-            self.make_dirty();
         }
     }
 
@@ -785,18 +762,11 @@ impl Editor {
 
     pub fn undo(&mut self) {
         self.buffer.undo();
+        self.confirm_dirty = false;
     }
 
     pub fn redo(&mut self) {
         self.buffer.redo();
-    }
-
-    fn make_dirty(&mut self) {
-        // Turn off the confirm quit message if applicable
-        if self.confirm_dirty {
-            self.message = None;
-        }
-        self.dirty = true;
         self.confirm_dirty = false;
     }
 
@@ -806,16 +776,6 @@ impl Editor {
             Local::now().format("%I:%M:%S %P"),
             message.as_ref()
         ));
-    }
-
-    fn update_left_gutter(&mut self) {
-        let new_gutter = Self::calculate_left_gutter(
-            self.row_offset,
-            self.screen_rows,
-            self.buffer.get_line_count(),
-        );
-        self.screen_cols = (self.screen_cols + self.left_gutter_size) - new_gutter;
-        self.left_gutter_size = new_gutter;
     }
 
     fn scroll(&mut self) {
@@ -834,28 +794,19 @@ impl Editor {
         let lines = self.buffer.get_line_count();
         let max_gutter_size = (if lines < 2 { 2 } else { lines + 1 } as f32)
             .log10()
-            .ceil() as usize + 1;
-        if self.draw_area.width != 0 && self.rx + max_gutter_size >= self.col_offset + self.draw_area.width as usize {
+            .ceil() as usize
+            + 1;
+        if self.draw_area.width != 0
+            && self.rx + max_gutter_size >= self.col_offset + self.draw_area.width as usize
+        {
             self.col_offset = self.rx + max_gutter_size - self.draw_area.width as usize;
         }
         if self.cy < self.row_offset {
             self.row_offset = self.cy;
         }
-        if self.cy >= self.row_offset + self.draw_area.height as usize && self.draw_area.height != 0 {
+        if self.cy >= self.row_offset + self.draw_area.height as usize && self.draw_area.height != 0
+        {
             self.row_offset = self.cy - self.draw_area.height as usize + 1;
         }
-    }
-
-    fn calculate_left_gutter(row_offset: usize, screen_rows: usize, rows: usize) -> usize {
-        // 1 to include pipe char and 2.0+ so that 10^n -> n+1 and line numbers start at 1
-        1 + if screen_rows < rows - row_offset {
-            (2.0 + (row_offset + screen_rows) as f32).log10().ceil()
-        } else {
-            (1.0 + rows as f32).log10().ceil()
-        } as usize
-    }
-
-    fn calculate_bottom_gutter() -> usize {
-        2 // file status and prompt
     }
 }
