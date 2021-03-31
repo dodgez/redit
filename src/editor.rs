@@ -54,6 +54,7 @@ pub struct Editor {
     screen_cols: usize,
     screen_rows: usize,
     syntaxes: SyntaxSet,
+    theme: Theme,
 }
 
 // Essentially just replaces tabs with 4 spaces
@@ -75,6 +76,68 @@ fn set_stdout_color<W: Write>(
         SetBackgroundColor(background),
         SetForegroundColor(foreground)
     )
+}
+
+impl tui::widgets::Widget for &mut Editor {
+    fn render(self, area: tui::layout::Rect, buf: &mut tui::buffer::Buffer) {
+        use tui::style::Color as TuiColor;
+        let bg = self.theme.settings.background.unwrap_or(SynColor::BLACK);
+        let bg_color = TuiColor::Rgb(
+            bg.r,
+            bg.g,
+            bg.b,
+        );
+        let fg = self.theme.settings.foreground.unwrap_or(SynColor::WHITE);
+        let fg_color = TuiColor::Rgb(
+            fg.r,
+            fg.g,
+            fg.b,
+        );
+        let default_style = Style {
+            background: bg,
+            foreground: fg,
+            font_style: FontStyle::empty(),
+        };
+        let highlight_style = StyleModifier {
+            background: Some(fg),
+            foreground: Some(bg),
+            font_style: None,
+        };
+
+        let syntax = self
+            .file_path
+            .as_ref()
+            .and_then(|f| f.extension())
+            .and_then(|e| self.syntaxes.find_syntax_by_extension(&e.to_string_lossy()));
+
+        let block = tui::widgets::Block::default().title(self.file_path.as_ref().map(|p| p.to_str().unwrap().to_string()).unwrap_or_else(|| "[No file]".to_string())).borders(tui::widgets::Borders::ALL).style(tui::style::Style::default().fg(fg_color).bg(bg_color));
+        let inner_area = block.inner(area);
+        block.render(area, buf);
+        for y in 0..inner_area.height as usize {
+            if let Some(line) = self.buffer.get_line(self.row_offset + y).map(|l| l.get_clean_raw()) {
+                let line = if (self.col_offset >= line.len()) {
+                    ""
+                } else {
+                    line.split_at(self.col_offset).1
+                };
+
+                let mut h = syntax.map(|s| HighlightLines::new(s, &self.theme));
+                if let Some(mut h) = h {
+                    let line = tui::text::Spans::from(h.highlight(line, &self.syntaxes).iter().map(|(style, text)| {
+                        let fg_rgb = style.foreground;
+                        let bg_rgb = style.background;
+                        tui::text::Span {
+                            content: std::borrow::Cow::Borrowed(text),
+                            style: tui::style::Style::default().fg(TuiColor::Rgb(fg_rgb.r, fg_rgb.g, fg_rgb.b)).bg(TuiColor::Rgb(bg_rgb.r, bg_rgb.g, bg_rgb.b))
+                        }
+                    }).collect::<Vec<tui::text::Span>>());
+                    buf.set_spans(inner_area.x, inner_area.y + y as u16, &line, inner_area.width);
+                } else {
+                    buf.set_stringn(inner_area.x, inner_area.y + y as u16, line, inner_area.width as usize, tui::style::Style::default());
+                };
+            }
+        }
+    }
 }
 
 impl Editor {
@@ -169,6 +232,10 @@ impl Editor {
             self.set_message(&"Press Ctrl-r again to reload from disk");
             Ok(())
         }
+    }
+
+    pub fn load_theme(&mut self, theme: Theme) {
+        self.theme = theme;
     }
 
     pub fn draw<W: Write>(&self, stdout: &mut W, theme: &Theme) -> crossterm::Result<()> {

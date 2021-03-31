@@ -4,6 +4,7 @@ use clap::{App, Arg};
 use crossterm::{
     cursor::{Hide, MoveTo, RestorePosition, SavePosition, Show},
     event::{read, EnableMouseCapture, Event, KeyCode, KeyModifiers, MouseEventKind},
+    ExecutableCommand,
     execute,
     style::{Color, SetBackgroundColor, SetForegroundColor},
     terminal::{
@@ -16,6 +17,7 @@ use syntect::{
     highlighting::{Color as SynColor, ThemeSet},
     parsing::SyntaxSet,
 };
+use tui::{backend::CrosstermBackend, Terminal};
 
 use redit::editor::{Editor, Movement};
 
@@ -57,6 +59,7 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
     )];
     let mut editor_index = 0;
     let mut e = editors.get_mut(editor_index).unwrap();
+    e.load_theme(theme.clone());
     if let Some(file) = file {
         e.open_file(&file)?
     };
@@ -65,36 +68,39 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
     execute!(
         stdout,
         EnterAlternateScreen,
-        SetBackgroundColor(background_color),
-        SetForegroundColor(foreground_color)
+        // SetBackgroundColor(background_color),
+        // SetForegroundColor(foreground_color)
     )?;
 
     enable_raw_mode()?;
 
-    e.draw(&mut stdout, theme)?;
-    e.move_cursor(Movement::BegFile, false);
-    let cur_pos = e.get_rel_cursor();
-    execute!(stdout, MoveTo(cur_pos.0, cur_pos.1), EnableMouseCapture)?;
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
+
+    // e.draw(&mut stdout, theme)?;
+    // e.move_cursor(Movement::BegFile, false);
+    // let cur_pos = e.get_rel_cursor();
+    // execute!(stdout, MoveTo(cur_pos.0, cur_pos.1), EnableMouseCapture)?;
 
     let mut clipboard = None;
 
     loop {
-        let event = read()?;
         e = editors.get_mut(editor_index).unwrap();
+        let event = read()?;
 
         match event {
-            Event::Resize(width, height) => {
-                execute!(stdout, Clear(ClearType::All))?;
-                #[cfg(target_family = "windows")]
-                e.resize(width as usize, height as usize);
-                #[cfg(target_family = "unix")]
-                e.resize(width as usize - 1, height as usize - 1);
-                execute!(
-                    stdout,
-                    SetBackgroundColor(background_color),
-                    SetForegroundColor(foreground_color)
-                )?;
-            }
+            // Event::Resize(width, height) => {
+            //     execute!(stdout, Clear(ClearType::All))?;
+            //     #[cfg(target_family = "windows")]
+            //     e.resize(width as usize, height as usize);
+            //     #[cfg(target_family = "unix")]
+            //     e.resize(width as usize - 1, height as usize - 1);
+            //     execute!(
+            //         stdout,
+            //         SetBackgroundColor(background_color),
+            //         SetForegroundColor(foreground_color)
+            //     )?;
+            // }
             Event::Mouse(event) => match event.kind {
                 MouseEventKind::ScrollDown => {
                     e.move_cursor(
@@ -259,23 +265,33 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                     }
                 }
             }
+            _ => {}
         }
 
-        let cur_pos = e.get_rel_cursor();
-        execute!(
-            stdout,
-            Hide,
-            MoveTo(cur_pos.0, cur_pos.1),
-            SavePosition,
-            Clear(ClearType::CurrentLine),
-            MoveTo(0, 0)
-        )?;
-        e.draw(&mut stdout, theme)?;
-        execute!(stdout, RestorePosition, Show)?;
+        terminal.set_cursor(e.get_rel_cursor().0, e.get_rel_cursor().1)?;
+
+        terminal.draw(|f| {
+            let size = f.size();
+            f.render_widget(e, size);
+        })?;
+
+
+        // let cur_pos = e.get_rel_cursor();
+        // execute!(
+        //     stdout,
+        //     Hide,
+        //     MoveTo(cur_pos.0, cur_pos.1),
+        //     SavePosition,
+        //     Clear(ClearType::CurrentLine),
+        //     MoveTo(0, 0)
+        // )?;
+        // e.draw(&mut stdout, theme)?;
+        // execute!(stdout, RestorePosition, Show)?;
+
     }
 
     disable_raw_mode()?;
-    execute!(stdout, LeaveAlternateScreen)?;
+    terminal.backend_mut().execute(LeaveAlternateScreen)?;
 
     Ok(())
 }
