@@ -19,7 +19,7 @@ impl Line {
     }
 
     pub fn render(&self, options: &RenderConfig) -> String {
-        let rendered = self.raw.trim_end().to_string();
+        let rendered = self.get_clean_raw();
 
         rendered.replace('\t', &" ".repeat(options.tab_size))
     }
