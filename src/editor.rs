@@ -10,15 +10,14 @@ use chrono::Local;
 use crossterm::{execute, style::Color, style::SetBackgroundColor, style::SetForegroundColor};
 use syntect::{
     easy::HighlightLines,
-    highlighting::{Color as SynColor, FontStyle, Style, StyleModifier, Theme},
+    highlighting::{Color as SynColor, Style, StyleModifier, Theme},
     parsing::SyntaxSet,
-    util::{as_24_bit_terminal_escaped, modify_range},
+    util::modify_range,
 };
 use tui::{layout::Rect, style::Color as TuiColor};
 
 use crate::buffer::Buffer;
 use crate::line::Line;
-use crate::prompt::{Prompt, PromptPurpose};
 use crate::render_config::RenderConfig;
 
 pub enum Movement {
@@ -35,7 +34,6 @@ pub enum Movement {
 
 #[derive(Default)]
 pub struct Editor {
-    bottom_gutter_size: usize,
     buffer: Buffer,
     col_offset: usize,
     confirm_dirty: bool,
@@ -45,10 +43,8 @@ pub struct Editor {
     highlighting: bool,
     hx: usize,
     hy: usize,
-    left_gutter_size: usize,
     message: Option<String>,
     draw_area: Rect,
-    prompt: Prompt,
     render_opts: RenderConfig,
     row_offset: usize,
     rx: usize,
@@ -64,18 +60,6 @@ fn convert_cx_to_rx(line: &Line, cx: usize, render_opts: &RenderConfig) -> usize
         let raw = line.get_raw().split_at(cx).0;
         raw.matches('\t').count() * 3 + cx
     }
-}
-
-fn set_stdout_color<W: Write>(
-    stdout: &mut W,
-    background: Color,
-    foreground: Color,
-) -> crossterm::Result<()> {
-    execute!(
-        stdout,
-        SetBackgroundColor(background),
-        SetForegroundColor(foreground)
-    )
 }
 
 impl tui::widgets::Widget for &mut Editor {
@@ -245,7 +229,7 @@ impl Editor {
 
     pub fn open(&mut self) {
         if !self.buffer.is_dirty() || self.confirm_dirty {
-            self.prompt = Prompt::new("File to open".to_string(), PromptPurpose::Open);
+            panic!("Prompt not implemented");
         } else {
             self.confirm_dirty = true;
             self.set_message(&"Press Ctrl-o again to open a file");
@@ -267,7 +251,7 @@ impl Editor {
             self.buffer.set_clean();
             self.confirm_dirty = false;
         } else {
-            self.prompt = Prompt::new("New file name".to_string(), PromptPurpose::Save);
+            panic!("Prompt not implemented");
         }
 
         Ok(())
@@ -302,199 +286,19 @@ impl Editor {
         self.theme = theme;
     }
 
-    // pub fn draw<W: Write>(&self, stdout: &mut W, theme: &Theme) -> crossterm::Result<()> {
-    //     let bg = theme.settings.background.unwrap_or(SynColor::BLACK);
-    //     let bg_color = Color::Rgb {
-    //         r: bg.r,
-    //         g: bg.g,
-    //         b: bg.b,
-    //     };
-    //     let fg = theme.settings.foreground.unwrap_or(SynColor::WHITE);
-    //     let fg_color = Color::Rgb {
-    //         r: fg.r,
-    //         g: fg.g,
-    //         b: fg.b,
-    //     };
-    //     let default_style = Style {
-    //         background: bg,
-    //         foreground: fg,
-    //         font_style: FontStyle::empty(),
-    //     };
-    //     let highlight_style = StyleModifier {
-    //         background: Some(fg),
-    //         foreground: Some(bg),
-    //         font_style: None,
-    //     };
-
-    //     let syntax = self
-    //         .file_path
-    //         .as_ref()
-    //         .and_then(|f| f.extension())
-    //         .and_then(|e| self.syntaxes.find_syntax_by_extension(&e.to_string_lossy()));
-
-    //     for y in self.row_offset
-    //         ..min(
-    //             self.buffer.get_line_count(),
-    //             self.row_offset + self.screen_rows + 1,
-    //         )
-    //     {
-    //         let gutter_size = (if y < 2 { 2 } else { 2 + y } as f32).log10().ceil() as usize; // 2+ so line numbers start at 1
-    //         stdout.write_all(
-    //             format!(
-    //                 "{}{}|",
-    //                 " ".repeat(self.left_gutter_size - gutter_size - 1), // Get difference not including separator
-    //                 y + 1 // Line numbering starts at 1
-    //             )
-    //             .as_bytes(),
-    //         );
-    //         let row = self.buffer.get_line(y).unwrap().render(&self.render_opts); // Safe because of array bounds
-    //         let col_split = if (self.col_offset >= row.len()) {
-    //             ""
-    //         } else {
-    //             row.split_at(self.col_offset).1
-    //         };
-    //         let mut len = col_split.len();
-    //         if len > self.screen_cols {
-    //             len = self.screen_cols;
-    //         }
-
-    //         let mut write_escaped = |s: &[(Style, &str)]| {
-    //             stdout.write_all(as_24_bit_terminal_escaped(&s, true).as_bytes())
-    //         };
-
-    //         let mut h = syntax.map(|s| HighlightLines::new(s, theme));
-    //         let raw_row = col_split.split_at(len).0;
-    //         let row = if let Some(mut h) = h {
-    //             h.highlight(raw_row, &self.syntaxes)
-    //         } else {
-    //             vec![(default_style, raw_row)]
-    //         };
-    //         if self.highlighting && y >= min(self.cy, self.hy) && y <= max(self.cy, self.hy) {
-    //             if self.cy == self.hy {
-    //                 if self.cx < self.hx {
-    //                     write_escaped(&modify_range(&row, self.cx..self.hx, highlight_style))?;
-    //                 } else {
-    //                     write_escaped(&modify_range(&row, self.hx..self.cx, highlight_style))?;
-    //                 }
-    //             } else if y == min(self.cy, self.hy) {
-    //                 if self.cy < self.hy {
-    //                     write_escaped(&modify_range(
-    //                         &row,
-    //                         self.cx..raw_row.len(),
-    //                         highlight_style,
-    //                     ))?;
-    //                 } else {
-    //                     write_escaped(&modify_range(
-    //                         &row,
-    //                         self.hx..raw_row.len(),
-    //                         highlight_style,
-    //                     ))?;
-    //                 }
-    //             } else if y == max(self.cy, self.hy) {
-    //                 if self.cy < self.hy {
-    //                     write_escaped(&modify_range(&row, 0..self.hx, highlight_style))?;
-    //                 } else {
-    //                     write_escaped(&modify_range(&row, 0..self.cx, highlight_style))?;
-    //                 }
-    //             } else {
-    //                 write_escaped(&modify_range(&row, 0..raw_row.len(), highlight_style))?;
-    //             }
-    //         } else {
-    //             stdout.write_all(as_24_bit_terminal_escaped(&row, true).as_bytes())?;
-    //         }
-    //         execute!(
-    //             stdout,
-    //             SetBackgroundColor(bg_color),
-    //             SetForegroundColor(fg_color)
-    //         )?;
-
-    //         stdout.write_all(b"\x1b[K")?; // Clear line
-    //         stdout.write_all(b"\r\n")?;
-    //     }
-
-    //     // Force status bar to be at the bottom
-    //     for y in self.buffer.get_line_count()..self.row_offset + self.screen_rows + 1 {
-    //         stdout.write_all(b"\x1b[K")?; // Clear line
-    //         stdout.write_all(b"\r\n")?;
-    //     }
-
-    //     // File status bar
-    //     stdout.write_all(b"\x1b[K")?;
-    //     let mut file_s = self
-    //         .file_path
-    //         .as_ref()
-    //         .map(|p| p.to_string_lossy().into_owned())
-    //         .unwrap_or_else(|| "[No Name]".to_string());
-    //     let status_start = if self.dirty {
-    //         "File (modified): "
-    //     } else {
-    //         "File: "
-    //     };
-    //     let max_length = self.screen_cols + self.left_gutter_size - status_start.len() - 21; // 21 for line col status up to 4 chars each
-    //     if file_s.len() > max_length {
-    //         file_s = file_s.split_at(file_s.len() - max_length).1.to_string();
-    //     }
-    //     stdout.write_all(
-    //         format!(
-    //             "{}{} L{}:C{}",
-    //             status_start,
-    //             file_s,
-    //             self.cy + 1,
-    //             self.rx + 1
-    //         )
-    //         .as_bytes(),
-    //     )?;
-    //     stdout.write_all(b"\r\n")?;
-
-    //     // Message status bar
-    //     stdout.write_all(b"\x1b[K")?;
-    //     match &self.message {
-    //         Some(message) => {
-    //             stdout.write_all(format!("Message at {} ", message).as_bytes())?;
-    //         }
-    //         None => {
-    //             stdout.write_all(b"[No Messages] ")?;
-    //         }
-    //     }
-
-    //     if self.prompt.is_active() {
-    //         self.prompt.draw(stdout);
-    //     }
-
-    //     Ok(())
-    // }
-
     pub fn get_rel_cursor(&self) -> (u16, u16) {
-        if !self.prompt.is_active() {
-            let lines = self.buffer.get_line_count();
-            let max_gutter_size = (if lines < 2 { 2 } else { lines + 1 } as f32)
-                .log10()
-                .ceil();
-            (
-                (self.rx - self.col_offset + max_gutter_size as usize + 1) as u16
-                    + self.draw_area.x,
-                (self.cy - self.row_offset) as u16 + self.draw_area.y,
-            )
-        } else {
-            (0, 0)
-        }
-        // } else {
-        //     let message_length = if let Some(message) = &self.message {
-        //         format!("Message at {} ", message).len()
-        //     } else {
-        //         "[No Messages] ".len()
-        //     };
-        //     (
-        //         message_length as u16 + self.prompt.get_length(),
-        //         self.screen_rows as u16 + 2, // +2 because prompt is on second line
-        //     )
-        // }
+        let lines = self.buffer.get_line_count();
+        let max_gutter_size = (if lines < 2 { 2 } else { lines + 1 } as f32)
+            .log10()
+            .ceil();
+        (
+            (self.rx - self.col_offset + max_gutter_size as usize + 1) as u16
+                + self.draw_area.x,
+            (self.cy - self.row_offset) as u16 + self.draw_area.y,
+        )
     }
 
     pub fn move_cursor(&mut self, pos: Movement, with_highlight: bool) {
-        if self.prompt.is_active() {
-            return;
-        }
         if with_highlight && !self.highlighting {
             self.hx = self.cx;
             self.hy = self.cy;
@@ -606,13 +410,18 @@ impl Editor {
                 self.cx = min(x, self.buffer.get_line(self.cy).unwrap().get_raw().len());
             }
             Movement::AbsoluteScreen(x, y) => {
-                self.cy = min(self.row_offset + y, self.buffer.get_line_count() - 1);
+                let lines = self.buffer.get_line_count();
+                self.cy = min(self.row_offset + y, lines - 1);
                 let row_len = self.buffer.get_line(self.cy).unwrap().get_raw().len();
+                let max_gutter_size = (if lines < 2 { 2 } else { lines + 1 } as f32)
+                    .log10()
+                    .ceil() as usize
+                    + 1;
                 self.cx = min(
-                    if self.left_gutter_size > x {
+                    if max_gutter_size >= x {
                         0
                     } else {
-                        x - self.left_gutter_size
+                        x - max_gutter_size
                     },
                     if row_len > 0 { row_len - 1 } else { 0 },
                 );
@@ -637,9 +446,7 @@ impl Editor {
     }
 
     pub fn write_char(&mut self, c: char) {
-        if self.prompt.is_active() {
-            self.prompt.add_char(c);
-        } else if self.cy < self.buffer.get_line_count() {
+        if self.cy < self.buffer.get_line_count() {
             self.buffer.insert_char(self.cy, self.cx, c, true);
             self.move_cursor(Movement::Relative(1, 0), false);
             self.confirm_dirty = false;
@@ -647,9 +454,6 @@ impl Editor {
     }
 
     pub fn delete_char(&mut self) {
-        if self.prompt.is_active() {
-            return;
-        }
         if self.highlighting {
             self.remove_highlight();
             self.highlighting = false;
@@ -660,10 +464,7 @@ impl Editor {
     }
 
     pub fn backspace_char(&mut self) {
-        if self.prompt.is_active() {
-            self.prompt.remove_char();
-        } else {
-            if self.highlighting {
+        if self.highlighting {
                 self.remove_highlight();
                 self.highlighting = false;
             }
@@ -672,22 +473,17 @@ impl Editor {
                 self.delete_char();
                 self.confirm_dirty = false;
             }
-        }
     }
 
     pub fn do_return(&mut self) {
-        if self.prompt.is_active() {
-            self.check_prompt();
-        } else {
-            if self.highlighting {
-                self.remove_highlight();
-                self.highlighting = false;
-            }
-            if self.cy < self.buffer.get_line_count() {
-                self.buffer.split_line(self.cy, self.cx, true);
-                self.move_cursor(Movement::Relative(0, 1), false);
-                self.move_cursor(Movement::Home, false);
-            }
+        if self.highlighting {
+            self.remove_highlight();
+            self.highlighting = false;
+        }
+        if self.cy < self.buffer.get_line_count() {
+            self.buffer.split_line(self.cy, self.cx, true);
+            self.move_cursor(Movement::Relative(0, 1), false);
+            self.move_cursor(Movement::Home, false);
         }
     }
 
@@ -730,35 +526,35 @@ impl Editor {
         }
     }
 
-    fn check_prompt(&mut self) {
-        let answer = self.prompt.get_answer();
-        match self.prompt.purpose {
-            PromptPurpose::Save => {
-                if let Some(answer) = answer {
-                    self.file_path = Some(Path::new(answer).to_path_buf());
-                    if let Err(e) = self.save() {
-                        self.set_message(&"Error writing to file");
-                    }
-                }
-            }
-            PromptPurpose::Open => {
-                if let Some(answer) = answer {
-                    let path = Path::new(answer).to_path_buf();
-                    if let Err(e) = self.open_file(&path) {
-                        self.set_message(&"Error opening file");
-                    }
-                }
-            }
-            _ => {}
-        }
-        self.cancel_prompt();
-    }
+    // fn check_prompt(&mut self) {
+    //     let answer = self.prompt.get_answer();
+    //     match self.prompt.purpose {
+    //         PromptPurpose::Save => {
+    //             if let Some(answer) = answer {
+    //                 self.file_path = Some(Path::new(answer).to_path_buf());
+    //                 if let Err(e) = self.save() {
+    //                     self.set_message(&"Error writing to file");
+    //                 }
+    //             }
+    //         }
+    //         PromptPurpose::Open => {
+    //             if let Some(answer) = answer {
+    //                 let path = Path::new(answer).to_path_buf();
+    //                 if let Err(e) = self.open_file(&path) {
+    //                     self.set_message(&"Error opening file");
+    //                 }
+    //             }
+    //         }
+    //         _ => {}
+    //     }
+    //     self.cancel_prompt();
+    // }
 
-    pub fn cancel_prompt(&mut self) {
-        self.confirm_dirty = false;
-        self.prompt.exit();
-        self.message = None;
-    }
+    // pub fn cancel_prompt(&mut self) {
+    //     self.confirm_dirty = false;
+    //     self.prompt.exit();
+    //     self.message = None;
+    // }
 
     pub fn undo(&mut self) {
         self.buffer.undo();

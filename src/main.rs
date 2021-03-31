@@ -222,9 +222,9 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                     KeyCode::Delete if event.modifiers == KeyModifiers::NONE => {
                         e.delete_char();
                     }
-                    KeyCode::Esc if event.modifiers == KeyModifiers::NONE => {
-                        e.cancel_prompt();
-                    }
+                    // KeyCode::Esc if event.modifiers == KeyModifiers::NONE => {
+                    //     e.cancel_prompt();
+                    // }
                     KeyCode::Char(c)
                         if event.modifiers == KeyModifiers::NONE
                             || event.modifiers == KeyModifiers::SHIFT =>
