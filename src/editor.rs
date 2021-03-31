@@ -86,16 +86,7 @@ impl Widget for &mut Editor {
         };
 
         let block = Block::default()
-            .title(format!(
-                "{} L{}:C{}",
-                self.file_path
-                    .as_ref()
-                    .map(|p| p.to_str().unwrap().to_string())
-                    .unwrap_or_else(|| "[No file]".to_string()),
-                self.cy + 1,
-                self.cx + 1
-            ))
-            .borders(Borders::ALL)
+            .borders(Borders::TOP)
             .style(TuiStyle::default().fg(fg_color).bg(bg_color));
         let inner_area = block.inner(area);
         block.render(area, buf);
@@ -196,7 +187,11 @@ impl Widget for &mut Editor {
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| "[No Message]".to_string()),
         ))
-        .block(Block::default().title("Message ").borders(Borders::TOP))
+        .block(
+            Block::default()
+                .title(format!("L{}:C{} {}", self.cy + 1, self.cx + 1, "Message "))
+                .borders(Borders::TOP),
+        )
         .wrap(Wrap { trim: true });
         p.render(chunks[1], buf);
     }
@@ -225,10 +220,7 @@ impl Editor {
             }
         }
 
-        let mut file_name = file_name.as_ref().to_path_buf();
-        if let Ok(path) = file_name.canonicalize() {
-            file_name = path;
-        }
+        let file_name = file_name.as_ref().to_path_buf();
         self.buffer = Buffer::new(rows);
         self.file_path = Some(file_name);
         self.set_message(&"File opened.");
@@ -290,6 +282,14 @@ impl Editor {
             self.set_message(&"Press Ctrl-r again to reload from disk");
         }
         Ok(())
+    }
+
+    pub fn get_title(&self) -> String {
+        self.file_path
+            .as_ref()
+            .map(|p| p.to_str().unwrap())
+            .unwrap_or_else(|| "[No file]")
+            .to_string()
     }
 
     pub fn load_theme(&mut self, theme: Theme) {

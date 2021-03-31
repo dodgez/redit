@@ -8,8 +8,15 @@ use crossterm::{
     ExecutableCommand,
 };
 use dirs::home_dir;
-use syntect::{highlighting::ThemeSet, parsing::SyntaxSet};
-use tui::{backend::CrosstermBackend, Terminal};
+use syntect::{
+    highlighting::{Color as SynColor, ThemeSet},
+    parsing::SyntaxSet,
+};
+use tui::{
+    backend::CrosstermBackend,
+    style::{Color as TuiColor, Style as TuiStyle},
+    Terminal,
+};
 
 use redit::editor::{Editor, Movement};
 
@@ -24,6 +31,12 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
     }
     let ps = ps.build();
     let theme = &ThemeSet::load_defaults().themes["Solarized (dark)"];
+    let bg = theme.settings.background.unwrap_or(SynColor::BLACK);
+    let bg_color = TuiColor::Rgb(bg.r, bg.g, bg.b);
+    let fg = theme.settings.foreground.unwrap_or(SynColor::WHITE);
+    let fg_color = TuiColor::Rgb(fg.r, fg.g, fg.b);
+    let sel = theme.settings.accent.unwrap_or(SynColor::WHITE);
+    let sel_color = TuiColor::Rgb(sel.r, sel.g, sel.b);
 
     let mut editors = vec![Editor::new(ps.clone())];
     let mut editor_index = 0;
@@ -45,8 +58,31 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
 
     let cur_pos = e.get_rel_cursor();
     terminal.draw(|f| {
+        use tui::{
+            layout::Rect,
+            style::Style,
+            text::Spans,
+            widgets::{Block, Borders, Tabs},
+        };
         let size = f.size();
-        f.render_widget(e, size);
+        let tab_block = Block::default()
+            .borders(Borders::ALL)
+            .style(TuiStyle::default().fg(fg_color).bg(bg_color));
+        let inner_area = tab_block.inner(size);
+        let tabs = Tabs::new(editors.iter().map(|e| Spans::from(e.get_title())).collect())
+            .block(tab_block)
+            .highlight_style(Style::default().fg(sel_color))
+            .divider("|");
+        f.render_widget(tabs, size);
+        f.render_widget(
+            &mut editors[0],
+            Rect {
+                x: inner_area.x,
+                y: inner_area.y + 1,
+                width: inner_area.width,
+                height: inner_area.height - 1,
+            },
+        );
     })?;
     terminal.set_cursor(cur_pos.0, cur_pos.1)?;
     terminal.show_cursor()?;
@@ -115,7 +151,6 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                             } else {
                                 editors.remove(editor_index);
                                 editor_index = 0;
-                                e = editors.get_mut(editor_index).unwrap();
                             }
                         }
                     }
@@ -131,7 +166,6 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                         } else {
                             editor_index -= 1;
                         }
-                        e = editors.get_mut(editor_index).unwrap();
                     }
                     KeyCode::Char(']') => {
                         if editor_index == editors.len() - 1 {
@@ -139,7 +173,6 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                         } else {
                             editor_index += 1;
                         }
-                        e = editors.get_mut(editor_index).unwrap();
                     }
                     KeyCode::Char('\\') => {
                         editors.push(Editor::new(ps.clone()));
@@ -238,11 +271,35 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
             }
         }
 
-        let cur_pos = e.get_rel_cursor();
         terminal.draw(|f| {
+            use tui::{
+                layout::Rect,
+                style::Style,
+                text::Spans,
+                widgets::{Block, Borders, Tabs},
+            };
             let size = f.size();
-            f.render_widget(e, size);
+            let tab_block = Block::default()
+                .borders(Borders::ALL)
+                .style(TuiStyle::default().fg(fg_color).bg(bg_color));
+            let inner_area = tab_block.inner(size);
+            let tabs = Tabs::new(editors.iter().map(|e| Spans::from(e.get_title())).collect())
+                .select(editor_index)
+                .block(tab_block)
+                .highlight_style(Style::default().fg(sel_color))
+                .divider("|");
+            f.render_widget(tabs, size);
+            f.render_widget(
+                &mut editors[editor_index],
+                Rect {
+                    x: inner_area.x,
+                    y: inner_area.y + 1,
+                    width: inner_area.width,
+                    height: inner_area.height - 1,
+                },
+            );
         })?;
+        let cur_pos = editors[editor_index].get_rel_cursor();
         terminal.set_cursor(cur_pos.0, cur_pos.1)?;
         terminal.show_cursor()?;
     }
