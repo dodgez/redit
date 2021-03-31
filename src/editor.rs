@@ -14,6 +14,10 @@ use syntect::{
     parsing::SyntaxSet,
     util::{as_24_bit_terminal_escaped, modify_range},
 };
+use tui::{
+    style::Color as TuiColor,
+    layout::Rect,
+};
 
 use crate::buffer::Buffer;
 use crate::line::Line;
@@ -47,6 +51,7 @@ pub struct Editor {
     hy: usize,
     left_gutter_size: usize,
     message: Option<String>,
+    draw_area: Rect,
     prompt: Prompt,
     render_opts: RenderConfig,
     row_offset: usize,
@@ -59,11 +64,12 @@ pub struct Editor {
 
 // Essentially just replaces tabs with 4 spaces
 fn convert_cx_to_rx(line: &Line, cx: usize, render_opts: &RenderConfig) -> usize {
-    if cx >= line.get_raw().len() {
-        line.render(render_opts).len();
+    if cx >= line.get_clean_raw().len() {
+        line.render(render_opts).len()
+    } else {
+        let raw = line.get_raw().split_at(cx).0;
+        raw.matches('\t').count() * 3 + cx
     }
-    let raw = line.get_raw().split_at(cx).0;
-    raw.matches('\t').count() * 3 + cx
 }
 
 fn set_stdout_color<W: Write>(
@@ -80,42 +86,51 @@ fn set_stdout_color<W: Write>(
 
 impl tui::widgets::Widget for &mut Editor {
     fn render(self, area: tui::layout::Rect, buf: &mut tui::buffer::Buffer) {
-        use tui::style::Color as TuiColor;
         let bg = self.theme.settings.background.unwrap_or(SynColor::BLACK);
-        let bg_color = TuiColor::Rgb(
-            bg.r,
-            bg.g,
-            bg.b,
-        );
+        let bg_color = TuiColor::Rgb(bg.r, bg.g, bg.b);
         let fg = self.theme.settings.foreground.unwrap_or(SynColor::WHITE);
-        let fg_color = TuiColor::Rgb(
-            fg.r,
-            fg.g,
-            fg.b,
-        );
-        let default_style = Style {
-            background: bg,
-            foreground: fg,
-            font_style: FontStyle::empty(),
-        };
+        let fg_color = TuiColor::Rgb(fg.r, fg.g, fg.b);
         let highlight_style = StyleModifier {
             background: Some(fg),
             foreground: Some(bg),
             font_style: None,
         };
 
+        let block = tui::widgets::Block::default()
+            .title(format!(
+                "{} L{}:C{}",
+                self.file_path
+                    .as_ref()
+                    .map(|p| p.to_str().unwrap().to_string())
+                    .unwrap_or_else(|| "[No file]".to_string()),
+                self.cy + 1,
+                self.cx + 1
+            ))
+            .borders(tui::widgets::Borders::ALL)
+            .style(tui::style::Style::default().fg(fg_color).bg(bg_color));
+        let inner_area = block.inner(area);
+        block.render(area, buf);
+        self.draw_area = inner_area;
         let syntax = self
             .file_path
             .as_ref()
             .and_then(|f| f.extension())
             .and_then(|e| self.syntaxes.find_syntax_by_extension(&e.to_string_lossy()));
-
-        let block = tui::widgets::Block::default().title(self.file_path.as_ref().map(|p| p.to_str().unwrap().to_string()).unwrap_or_else(|| "[No file]".to_string())).borders(tui::widgets::Borders::ALL).style(tui::style::Style::default().fg(fg_color).bg(bg_color));
-        let inner_area = block.inner(area);
-        block.render(area, buf);
+        let lines = self.buffer.get_line_count();
+        let max_gutter_size = (if lines < 2 { 2 } else { lines + 1 } as f32)
+            .log10()
+            .ceil();
         for y in 0..inner_area.height as usize {
-            if let Some(line) = self.buffer.get_line(self.row_offset + y).map(|l| l.get_clean_raw()) {
-                let line = if (self.col_offset >= line.len()) {
+            if let Some(line) = self
+                .buffer
+                .get_line(self.row_offset + y)
+                .map(|l| l.render(&self.render_opts))
+            {
+                let line_number = self.row_offset + y;
+                let gutter_size = (if line_number < 2 { 2 } else { line_number + 2 } as f32)
+                    .log10()
+                    .ceil();
+                let raw_line = if (self.col_offset >= line.len()) {
                     ""
                 } else {
                     line.split_at(self.col_offset).1
@@ -123,17 +138,71 @@ impl tui::widgets::Widget for &mut Editor {
 
                 let mut h = syntax.map(|s| HighlightLines::new(s, &self.theme));
                 if let Some(mut h) = h {
-                    let line = tui::text::Spans::from(h.highlight(line, &self.syntaxes).iter().map(|(style, text)| {
-                        let fg_rgb = style.foreground;
-                        let bg_rgb = style.background;
-                        tui::text::Span {
-                            content: std::borrow::Cow::Borrowed(text),
-                            style: tui::style::Style::default().fg(TuiColor::Rgb(fg_rgb.r, fg_rgb.g, fg_rgb.b)).bg(TuiColor::Rgb(bg_rgb.r, bg_rgb.g, bg_rgb.b))
+                    let mut line = h.highlight(raw_line, &self.syntaxes);
+                    if self.highlighting && y >= min(self.cy, self.hy) && y <= max(self.cy, self.hy)
+                    {
+                        if self.cy == self.hy {
+                            if self.cx < self.hx {
+                                line = modify_range(&line, self.cx..self.hx, highlight_style);
+                            } else {
+                                line = modify_range(&line, self.hx..self.cx, highlight_style);
+                            }
+                        } else if y == min(self.cy, self.hy) {
+                            if self.cy < self.hy {
+                                line =
+                                    modify_range(&line, self.cx..raw_line.len(), highlight_style);
+                            } else {
+                                line =
+                                    modify_range(&line, self.hx..raw_line.len(), highlight_style);
+                            }
+                        } else if y == max(self.cy, self.hy) {
+                            if self.cy < self.hy {
+                                line = modify_range(&line, 0..self.hx, highlight_style);
+                            } else {
+                                line = modify_range(&line, 0..self.cx, highlight_style);
+                            }
+                        } else {
+                            line = modify_range(&line, 0..raw_line.len(), highlight_style);
                         }
-                    }).collect::<Vec<tui::text::Span>>());
-                    buf.set_spans(inner_area.x, inner_area.y + y as u16, &line, inner_area.width);
+                    }
+                    let line = tui::text::Spans::from(
+                        line.iter()
+                            .map(|(style, text)| {
+                                let fg_rgb = style.foreground;
+                                let bg_rgb = style.background;
+                                tui::text::Span {
+                                    content: std::borrow::Cow::Borrowed(text),
+                                    style: tui::style::Style::default()
+                                        .fg(TuiColor::Rgb(fg_rgb.r, fg_rgb.g, fg_rgb.b))
+                                        .bg(TuiColor::Rgb(bg_rgb.r, bg_rgb.g, bg_rgb.b)),
+                                }
+                            })
+                            .collect::<Vec<tui::text::Span>>(),
+                    );
+                    buf.set_string(
+                        inner_area.x,
+                        inner_area.y + y as u16,
+                        format!(
+                            "{}{}|",
+                            " ".repeat((max_gutter_size - gutter_size) as usize),
+                            line_number + 1
+                        ),
+                        tui::style::Style::default(),
+                    );
+                    buf.set_spans(
+                        inner_area.x + max_gutter_size as u16 + 1,
+                        inner_area.y + y as u16,
+                        &line,
+                        inner_area.width as u16 - max_gutter_size as u16 - 1,
+                    );
                 } else {
-                    buf.set_stringn(inner_area.x, inner_area.y + y as u16, line, inner_area.width as usize, tui::style::Style::default());
+                    buf.set_stringn(
+                        inner_area.x,
+                        inner_area.y + y as u16,
+                        line,
+                        inner_area.width as usize - max_gutter_size as usize - 1, // Account for line numbers
+                        tui::style::Style::default(),
+                    );
                 };
             }
         }
@@ -238,167 +307,167 @@ impl Editor {
         self.theme = theme;
     }
 
-    pub fn draw<W: Write>(&self, stdout: &mut W, theme: &Theme) -> crossterm::Result<()> {
-        let bg = theme.settings.background.unwrap_or(SynColor::BLACK);
-        let bg_color = Color::Rgb {
-            r: bg.r,
-            g: bg.g,
-            b: bg.b,
-        };
-        let fg = theme.settings.foreground.unwrap_or(SynColor::WHITE);
-        let fg_color = Color::Rgb {
-            r: fg.r,
-            g: fg.g,
-            b: fg.b,
-        };
-        let default_style = Style {
-            background: bg,
-            foreground: fg,
-            font_style: FontStyle::empty(),
-        };
-        let highlight_style = StyleModifier {
-            background: Some(fg),
-            foreground: Some(bg),
-            font_style: None,
-        };
+    // pub fn draw<W: Write>(&self, stdout: &mut W, theme: &Theme) -> crossterm::Result<()> {
+    //     let bg = theme.settings.background.unwrap_or(SynColor::BLACK);
+    //     let bg_color = Color::Rgb {
+    //         r: bg.r,
+    //         g: bg.g,
+    //         b: bg.b,
+    //     };
+    //     let fg = theme.settings.foreground.unwrap_or(SynColor::WHITE);
+    //     let fg_color = Color::Rgb {
+    //         r: fg.r,
+    //         g: fg.g,
+    //         b: fg.b,
+    //     };
+    //     let default_style = Style {
+    //         background: bg,
+    //         foreground: fg,
+    //         font_style: FontStyle::empty(),
+    //     };
+    //     let highlight_style = StyleModifier {
+    //         background: Some(fg),
+    //         foreground: Some(bg),
+    //         font_style: None,
+    //     };
 
-        let syntax = self
-            .file_path
-            .as_ref()
-            .and_then(|f| f.extension())
-            .and_then(|e| self.syntaxes.find_syntax_by_extension(&e.to_string_lossy()));
+    //     let syntax = self
+    //         .file_path
+    //         .as_ref()
+    //         .and_then(|f| f.extension())
+    //         .and_then(|e| self.syntaxes.find_syntax_by_extension(&e.to_string_lossy()));
 
-        for y in self.row_offset
-            ..min(
-                self.buffer.get_line_count(),
-                self.row_offset + self.screen_rows + 1,
-            )
-        {
-            let gutter_size = (if y < 2 { 2 } else { 2 + y } as f32).log10().ceil() as usize; // 2+ so line numbers start at 1
-            stdout.write_all(
-                format!(
-                    "{}{}|",
-                    " ".repeat(self.left_gutter_size - gutter_size - 1), // Get difference not including separator
-                    y + 1 // Line numbering starts at 1
-                )
-                .as_bytes(),
-            );
-            let row = self.buffer.get_line(y).unwrap().render(&self.render_opts); // Safe because of array bounds
-            let col_split = if (self.col_offset >= row.len()) {
-                ""
-            } else {
-                row.split_at(self.col_offset).1
-            };
-            let mut len = col_split.len();
-            if len > self.screen_cols {
-                len = self.screen_cols;
-            }
+    //     for y in self.row_offset
+    //         ..min(
+    //             self.buffer.get_line_count(),
+    //             self.row_offset + self.screen_rows + 1,
+    //         )
+    //     {
+    //         let gutter_size = (if y < 2 { 2 } else { 2 + y } as f32).log10().ceil() as usize; // 2+ so line numbers start at 1
+    //         stdout.write_all(
+    //             format!(
+    //                 "{}{}|",
+    //                 " ".repeat(self.left_gutter_size - gutter_size - 1), // Get difference not including separator
+    //                 y + 1 // Line numbering starts at 1
+    //             )
+    //             .as_bytes(),
+    //         );
+    //         let row = self.buffer.get_line(y).unwrap().render(&self.render_opts); // Safe because of array bounds
+    //         let col_split = if (self.col_offset >= row.len()) {
+    //             ""
+    //         } else {
+    //             row.split_at(self.col_offset).1
+    //         };
+    //         let mut len = col_split.len();
+    //         if len > self.screen_cols {
+    //             len = self.screen_cols;
+    //         }
 
-            let mut write_escaped = |s: &[(Style, &str)]| {
-                stdout.write_all(as_24_bit_terminal_escaped(&s, true).as_bytes())
-            };
+    //         let mut write_escaped = |s: &[(Style, &str)]| {
+    //             stdout.write_all(as_24_bit_terminal_escaped(&s, true).as_bytes())
+    //         };
 
-            let mut h = syntax.map(|s| HighlightLines::new(s, theme));
-            let raw_row = col_split.split_at(len).0;
-            let row = if let Some(mut h) = h {
-                h.highlight(raw_row, &self.syntaxes)
-            } else {
-                vec![(default_style, raw_row)]
-            };
-            if self.highlighting && y >= min(self.cy, self.hy) && y <= max(self.cy, self.hy) {
-                if self.cy == self.hy {
-                    if self.cx < self.hx {
-                        write_escaped(&modify_range(&row, self.cx..self.hx, highlight_style))?;
-                    } else {
-                        write_escaped(&modify_range(&row, self.hx..self.cx, highlight_style))?;
-                    }
-                } else if y == min(self.cy, self.hy) {
-                    if self.cy < self.hy {
-                        write_escaped(&modify_range(
-                            &row,
-                            self.cx..raw_row.len(),
-                            highlight_style,
-                        ))?;
-                    } else {
-                        write_escaped(&modify_range(
-                            &row,
-                            self.hx..raw_row.len(),
-                            highlight_style,
-                        ))?;
-                    }
-                } else if y == max(self.cy, self.hy) {
-                    if self.cy < self.hy {
-                        write_escaped(&modify_range(&row, 0..self.hx, highlight_style))?;
-                    } else {
-                        write_escaped(&modify_range(&row, 0..self.cx, highlight_style))?;
-                    }
-                } else {
-                    write_escaped(&modify_range(&row, 0..raw_row.len(), highlight_style))?;
-                }
-            } else {
-                stdout.write_all(as_24_bit_terminal_escaped(&row, true).as_bytes())?;
-            }
-            execute!(
-                stdout,
-                SetBackgroundColor(bg_color),
-                SetForegroundColor(fg_color)
-            )?;
+    //         let mut h = syntax.map(|s| HighlightLines::new(s, theme));
+    //         let raw_row = col_split.split_at(len).0;
+    //         let row = if let Some(mut h) = h {
+    //             h.highlight(raw_row, &self.syntaxes)
+    //         } else {
+    //             vec![(default_style, raw_row)]
+    //         };
+    //         if self.highlighting && y >= min(self.cy, self.hy) && y <= max(self.cy, self.hy) {
+    //             if self.cy == self.hy {
+    //                 if self.cx < self.hx {
+    //                     write_escaped(&modify_range(&row, self.cx..self.hx, highlight_style))?;
+    //                 } else {
+    //                     write_escaped(&modify_range(&row, self.hx..self.cx, highlight_style))?;
+    //                 }
+    //             } else if y == min(self.cy, self.hy) {
+    //                 if self.cy < self.hy {
+    //                     write_escaped(&modify_range(
+    //                         &row,
+    //                         self.cx..raw_row.len(),
+    //                         highlight_style,
+    //                     ))?;
+    //                 } else {
+    //                     write_escaped(&modify_range(
+    //                         &row,
+    //                         self.hx..raw_row.len(),
+    //                         highlight_style,
+    //                     ))?;
+    //                 }
+    //             } else if y == max(self.cy, self.hy) {
+    //                 if self.cy < self.hy {
+    //                     write_escaped(&modify_range(&row, 0..self.hx, highlight_style))?;
+    //                 } else {
+    //                     write_escaped(&modify_range(&row, 0..self.cx, highlight_style))?;
+    //                 }
+    //             } else {
+    //                 write_escaped(&modify_range(&row, 0..raw_row.len(), highlight_style))?;
+    //             }
+    //         } else {
+    //             stdout.write_all(as_24_bit_terminal_escaped(&row, true).as_bytes())?;
+    //         }
+    //         execute!(
+    //             stdout,
+    //             SetBackgroundColor(bg_color),
+    //             SetForegroundColor(fg_color)
+    //         )?;
 
-            stdout.write_all(b"\x1b[K")?; // Clear line
-            stdout.write_all(b"\r\n")?;
-        }
+    //         stdout.write_all(b"\x1b[K")?; // Clear line
+    //         stdout.write_all(b"\r\n")?;
+    //     }
 
-        // Force status bar to be at the bottom
-        for y in self.buffer.get_line_count()..self.row_offset + self.screen_rows + 1 {
-            stdout.write_all(b"\x1b[K")?; // Clear line
-            stdout.write_all(b"\r\n")?;
-        }
+    //     // Force status bar to be at the bottom
+    //     for y in self.buffer.get_line_count()..self.row_offset + self.screen_rows + 1 {
+    //         stdout.write_all(b"\x1b[K")?; // Clear line
+    //         stdout.write_all(b"\r\n")?;
+    //     }
 
-        // File status bar
-        stdout.write_all(b"\x1b[K")?;
-        let mut file_s = self
-            .file_path
-            .as_ref()
-            .map(|p| p.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "[No Name]".to_string());
-        let status_start = if self.dirty {
-            "File (modified): "
-        } else {
-            "File: "
-        };
-        let max_length = self.screen_cols + self.left_gutter_size - status_start.len() - 21; // 21 for line col status up to 4 chars each
-        if file_s.len() > max_length {
-            file_s = file_s.split_at(file_s.len() - max_length).1.to_string();
-        }
-        stdout.write_all(
-            format!(
-                "{}{} L{}:C{}",
-                status_start,
-                file_s,
-                self.cy + 1,
-                self.rx + 1
-            )
-            .as_bytes(),
-        )?;
-        stdout.write_all(b"\r\n")?;
+    //     // File status bar
+    //     stdout.write_all(b"\x1b[K")?;
+    //     let mut file_s = self
+    //         .file_path
+    //         .as_ref()
+    //         .map(|p| p.to_string_lossy().into_owned())
+    //         .unwrap_or_else(|| "[No Name]".to_string());
+    //     let status_start = if self.dirty {
+    //         "File (modified): "
+    //     } else {
+    //         "File: "
+    //     };
+    //     let max_length = self.screen_cols + self.left_gutter_size - status_start.len() - 21; // 21 for line col status up to 4 chars each
+    //     if file_s.len() > max_length {
+    //         file_s = file_s.split_at(file_s.len() - max_length).1.to_string();
+    //     }
+    //     stdout.write_all(
+    //         format!(
+    //             "{}{} L{}:C{}",
+    //             status_start,
+    //             file_s,
+    //             self.cy + 1,
+    //             self.rx + 1
+    //         )
+    //         .as_bytes(),
+    //     )?;
+    //     stdout.write_all(b"\r\n")?;
 
-        // Message status bar
-        stdout.write_all(b"\x1b[K")?;
-        match &self.message {
-            Some(message) => {
-                stdout.write_all(format!("Message at {} ", message).as_bytes())?;
-            }
-            None => {
-                stdout.write_all(b"[No Messages] ")?;
-            }
-        }
+    //     // Message status bar
+    //     stdout.write_all(b"\x1b[K")?;
+    //     match &self.message {
+    //         Some(message) => {
+    //             stdout.write_all(format!("Message at {} ", message).as_bytes())?;
+    //         }
+    //         None => {
+    //             stdout.write_all(b"[No Messages] ")?;
+    //         }
+    //     }
 
-        if self.prompt.is_active() {
-            self.prompt.draw(stdout);
-        }
+    //     if self.prompt.is_active() {
+    //         self.prompt.draw(stdout);
+    //     }
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 
     pub fn resize(&mut self, width: usize, height: usize) {
         let bottom_gutter_size = Self::calculate_bottom_gutter();
@@ -414,9 +483,13 @@ impl Editor {
 
     pub fn get_rel_cursor(&self) -> (u16, u16) {
         if !self.prompt.is_active() {
+            let lines = self.buffer.get_line_count();
+            let max_gutter_size = (if lines < 2 { 2 } else { lines + 1 } as f32)
+                .log10()
+                .ceil();
             (
-                (self.rx - self.col_offset + self.left_gutter_size) as u16,
-                (self.cy - self.row_offset) as u16,
+                (self.rx - self.col_offset + max_gutter_size as usize + 1) as u16 + self.draw_area.x,
+                (self.cy - self.row_offset) as u16 + self.draw_area.y,
             )
         } else {
             let message_length = if let Some(message) = &self.message {
@@ -603,9 +676,17 @@ impl Editor {
     pub fn backspace_char(&mut self) {
         if self.prompt.is_active() {
             self.prompt.remove_char();
-        } else if self.cx > 0 || self.cy > 0 {
-            self.move_cursor(Movement::Relative(-1, 0), false);
-            self.delete_char();
+        } else {
+            if self.highlighting {
+                self.remove_highlight();
+                self.highlighting = false;
+                self.make_dirty();
+            }
+            if self.cx > 0 || self.cy > 0 {
+                self.move_cursor(Movement::Relative(-1, 0), false);
+                self.delete_char();
+                self.make_dirty();
+            }
         }
     }
 
@@ -745,14 +826,18 @@ impl Editor {
         if self.rx < self.col_offset {
             self.col_offset = self.rx;
         }
-        if self.rx - self.col_offset > self.screen_cols {
-            self.col_offset = self.rx - self.screen_cols;
+        let lines = self.buffer.get_line_count();
+        let max_gutter_size = (if lines < 2 { 2 } else { lines + 1 } as f32)
+            .log10()
+            .ceil() as usize + 1;
+        if self.draw_area.width != 0 && self.rx + max_gutter_size >= self.col_offset + self.draw_area.width as usize {
+            self.col_offset = self.rx + max_gutter_size - self.draw_area.width as usize;
         }
         if self.cy < self.row_offset {
             self.row_offset = self.cy;
         }
-        if self.cy - self.row_offset > self.screen_rows {
-            self.row_offset = self.cy - self.screen_rows;
+        if self.cy >= self.row_offset + self.draw_area.height as usize && self.draw_area.height != 0 {
+            self.row_offset = self.cy - self.draw_area.height as usize + 1;
         }
     }
 

@@ -1,6 +1,12 @@
 # redit
 A simple text editor written in rust.
 
+The current features are broken:
+- editor prompt
+- editor message
+- Page Up/Page down
+These should be fixed when this branch (integrate-tui) gets merged.
+
 ## Features
 - Terminal listens to resize events
 - Ctrl-Arrow key navigation

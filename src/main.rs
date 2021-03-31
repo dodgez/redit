@@ -2,21 +2,15 @@ use std::path::PathBuf;
 
 use clap::{App, Arg};
 use crossterm::{
-    cursor::{Hide, MoveTo, RestorePosition, SavePosition, Show},
     event::{read, EnableMouseCapture, Event, KeyCode, KeyModifiers, MouseEventKind},
-    ExecutableCommand,
     execute,
-    style::{Color, SetBackgroundColor, SetForegroundColor},
     terminal::{
-        disable_raw_mode, enable_raw_mode, size, Clear, ClearType, EnterAlternateScreen,
-        LeaveAlternateScreen,
+        disable_raw_mode, enable_raw_mode, size, EnterAlternateScreen, LeaveAlternateScreen,
     },
+    ExecutableCommand,
 };
 use dirs::home_dir;
-use syntect::{
-    highlighting::{Color as SynColor, ThemeSet},
-    parsing::SyntaxSet,
-};
+use syntect::{highlighting::ThemeSet, parsing::SyntaxSet};
 use tui::{backend::CrosstermBackend, Terminal};
 
 use redit::editor::{Editor, Movement};
@@ -32,18 +26,6 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
     }
     let ps = ps.build();
     let theme = &ThemeSet::load_defaults().themes["Solarized (dark)"];
-    let background_color = theme.settings.background.unwrap_or(SynColor::BLACK);
-    let background_color = Color::Rgb {
-        r: background_color.r,
-        g: background_color.g,
-        b: background_color.b,
-    };
-    let foreground_color = theme.settings.foreground.unwrap_or(SynColor::WHITE);
-    let foreground_color = Color::Rgb {
-        r: foreground_color.r,
-        g: foreground_color.g,
-        b: foreground_color.b,
-    };
 
     #[cfg(target_family = "windows")]
     let initial_size = size()?;
@@ -65,42 +47,44 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
     };
 
     let mut stdout = std::io::stdout();
-    execute!(
-        stdout,
-        EnterAlternateScreen,
-        // SetBackgroundColor(background_color),
-        // SetForegroundColor(foreground_color)
-    )?;
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
 
     enable_raw_mode()?;
 
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    // e.draw(&mut stdout, theme)?;
-    // e.move_cursor(Movement::BegFile, false);
-    // let cur_pos = e.get_rel_cursor();
-    // execute!(stdout, MoveTo(cur_pos.0, cur_pos.1), EnableMouseCapture)?;
-
     let mut clipboard = None;
+
+    let cur_pos = e.get_rel_cursor();
+    terminal.draw(|f| {
+        let size = f.size();
+        f.render_widget(e, size);
+    })?;
+    terminal.set_cursor(cur_pos.0, cur_pos.1)?;
+    terminal.show_cursor()?;
 
     loop {
         e = editors.get_mut(editor_index).unwrap();
-        let event = read()?;
 
+        let event = read()?;
         match event {
-            // Event::Resize(width, height) => {
-            //     execute!(stdout, Clear(ClearType::All))?;
-            //     #[cfg(target_family = "windows")]
-            //     e.resize(width as usize, height as usize);
-            //     #[cfg(target_family = "unix")]
-            //     e.resize(width as usize - 1, height as usize - 1);
-            //     execute!(
-            //         stdout,
-            //         SetBackgroundColor(background_color),
-            //         SetForegroundColor(foreground_color)
-            //     )?;
-            // }
+            Event::Resize(width, height) => {
+                #[cfg(target_family = "windows")]
+                terminal.resize(tui::layout::Rect {
+                    x: 0,
+                    y: 0,
+                    width,
+                    height,
+                })?;
+                #[cfg(target_family = "unix")]
+                terminal.resize(tui::layout::Rect {
+                    x: 0,
+                    y: 0,
+                    width: width - 1,
+                    height: height - 1,
+                })?;
+            }
             Event::Mouse(event) => match event.kind {
                 MouseEventKind::ScrollDown => {
                     e.move_cursor(
@@ -175,6 +159,7 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                         editors.push(Editor::new(size.1.into(), size.0.into(), ps.clone()));
                         let n = editors.len() - 1;
                         e = editors.get_mut(n).unwrap();
+                        e.load_theme(theme.clone());
                     }
                     KeyCode::Char('r') if event.modifiers == KeyModifiers::CONTROL => {
                         e.try_reload()?;
@@ -265,29 +250,15 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                     }
                 }
             }
-            _ => {}
         }
 
-        terminal.set_cursor(e.get_rel_cursor().0, e.get_rel_cursor().1)?;
-
+        let cur_pos = e.get_rel_cursor();
         terminal.draw(|f| {
             let size = f.size();
             f.render_widget(e, size);
         })?;
-
-
-        // let cur_pos = e.get_rel_cursor();
-        // execute!(
-        //     stdout,
-        //     Hide,
-        //     MoveTo(cur_pos.0, cur_pos.1),
-        //     SavePosition,
-        //     Clear(ClearType::CurrentLine),
-        //     MoveTo(0, 0)
-        // )?;
-        // e.draw(&mut stdout, theme)?;
-        // execute!(stdout, RestorePosition, Show)?;
-
+        terminal.set_cursor(cur_pos.0, cur_pos.1)?;
+        terminal.show_cursor()?;
     }
 
     disable_raw_mode()?;
