@@ -8,6 +8,7 @@ use crossterm::{
     ExecutableCommand,
 };
 use dirs::home_dir;
+use serde_derive::Deserialize;
 use syntect::{
     highlighting::{Color as SynColor, ThemeSet},
     parsing::SyntaxSet,
@@ -23,17 +24,35 @@ use redit::{
     prompt::Prompt,
 };
 
+#[derive(Deserialize)]
+struct Config {
+    theme: String,
+}
+
 fn edit(file: Option<&str>) -> crossterm::Result<()> {
     let mut ps = SyntaxSet::load_defaults_newlines().into_builder();
     let config_dir = home_dir()
         .unwrap_or_else(|| PathBuf::from("~"))
         .join(".config/redit");
+    let config_file = config_dir.join("settings.toml");
+    let mut config: Config = Config {
+        theme: "Solarized (dark)".to_string(),
+    };
+    if config_file.exists() {
+        let contents = std::fs::read_to_string(config_file)?;
+        config = toml::from_str(&contents).expect("Failed to parse settings");
+    }
     let syntax_dir = config_dir.join("syntaxes");
     if syntax_dir.exists() && ps.add_from_folder(syntax_dir, true).is_err() {
         eprintln!("Couldn't load syntaxes");
     }
     let ps = ps.build();
-    let theme = &ThemeSet::load_defaults().themes["Solarized (dark)"];
+    let theme_dir = config_dir.join("themes");
+    let mut theme_set = ThemeSet::load_defaults();
+    if theme_dir.exists() && theme_set.add_from_folder(theme_dir).is_err() {
+        eprintln!("Couldn't load themes");
+    }
+    let theme = &theme_set.themes[&config.theme];
     let bg = theme.settings.background.unwrap_or(SynColor::BLACK);
     let bg_color = TuiColor::Rgb(bg.r, bg.g, bg.b);
     let fg = theme.settings.foreground.unwrap_or(SynColor::WHITE);
