@@ -127,11 +127,11 @@ impl Buffer {
                 if self.get_line_count() > start_y + lines.len() {
                     self.insert_line(
                         start_y + lines.len() - 1,
-                        Line::new(lines.last().unwrap().get_clean_raw().to_string() + &second_half),
+                        Line::new(lines.last().unwrap().get_clean_raw() + &second_half),
                     );
                 } else {
                     self.lines.push(Line::new(
-                        lines.last().unwrap().get_clean_raw().to_string() + &second_half,
+                        lines.last().unwrap().get_clean_raw() + &second_half,
                     ));
                 }
                 self.dirty = true;

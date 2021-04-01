@@ -27,8 +27,8 @@ Roughly listed in order of priority:
 - `Ctrl-s` - saves the currently open file (or asks where to save new file)
 - `Ctrl-o` - opens a file
 - `Ctrl-c`, `Ctrl-x`, `Ctrl-v` - copy, cut, and paste respectively (works across editor buffers)
-- `[` or `]` - switch to the previous or next editor respectively
-- `\` - creates a new editor
+- `Ctrl-p` or `Ctrl-n` - switch to the previous or next editor respectively
+- `Ctrl-b` - creates a new editor
 - `Home` or `End` - moves to the beginning or end of the current line
 - `PageUp` or `PageDown` - moves (up to) one screen height up or down
 - `Backspace` or `Delete` - deletes the character directly behind or in front of the cursor

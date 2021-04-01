@@ -193,7 +193,7 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                             e.redo();
                         }
                     }
-                    KeyCode::Char('[') => {
+                    KeyCode::Char('p') if event.modifiers == KeyModifiers::CONTROL => {
                         if prompt.is_none() {
                             if editor_index == 0 {
                                 editor_index = editors.len() - 1;
@@ -202,7 +202,7 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                             }
                         }
                     }
-                    KeyCode::Char(']') => {
+                    KeyCode::Char('n') if event.modifiers == KeyModifiers::CONTROL => {
                         if prompt.is_none() {
                             if editor_index == editors.len() - 1 {
                                 editor_index = 0;
@@ -211,7 +211,7 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                             }
                         }
                     }
-                    KeyCode::Char('\\') => {
+                    KeyCode::Char('b') if event.modifiers == KeyModifiers::CONTROL => {
                         if prompt.is_none() {
                             editors.push(Editor::new(ps.clone()));
                             let n = editors.len() - 1;
