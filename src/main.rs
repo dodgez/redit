@@ -206,8 +206,8 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                         }
                     }
                     KeyCode::Char('s') if event.modifiers == KeyModifiers::CONTROL => {
-                        if prompt.is_none() {
-                            e.save()?;
+                        if prompt.is_none() && !e.save()? {
+                            prompt = Some(Prompt::new(Some("save ".to_string())));
                         }
                     }
                     KeyCode::Char('o') if event.modifiers == KeyModifiers::CONTROL => {
@@ -309,7 +309,36 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                         if prompt.is_none() {
                             e.do_return();
                         } else {
-                            panic!("Prompt return not implemented!");
+                            let response = prompt
+                                .unwrap()
+                                .take_answer()
+                                .unwrap_or_else(|| "".to_string());
+                            prompt = None;
+                            let info: Vec<&str> = response.split(' ').collect();
+                            match info[0] {
+                                "save" => {
+                                    if info.len() > 1 {
+                                        e.save_as(std::path::PathBuf::from(info[1]))?;
+                                    } else {
+                                        e.set_message(&"Specify path to save");
+                                    }
+                                }
+                                "open" => {
+                                    if info.len() > 1 {
+                                        let path = std::path::PathBuf::from(info[1]);
+                                        if !path.exists() {
+                                            e.set_message(&"File does not exist");
+                                        } else {
+                                            e.open_file(&path)?;
+                                        }
+                                    } else {
+                                        e.set_message(&"Specify file to open");
+                                    }
+                                }
+                                _ => {
+                                    e.set_message(&format!("Command not recognized {}", info[0]));
+                                }
+                            }
                         }
                     }
                     KeyCode::Delete if event.modifiers == KeyModifiers::NONE => {
@@ -413,4 +442,3 @@ pub fn main() -> std::io::Result<()> {
 
     Ok(())
 }
-            

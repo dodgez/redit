@@ -1,10 +1,6 @@
 # redit
 A simple text editor written in rust.
 
-The current features are broken:
-- editor prompt (needs to execute commands)
-These should be fixed when this branch (integrate-tui) gets merged.
-
 ## Features
 - Terminal listens to resize events
 - Ctrl-Arrow key navigation
@@ -15,11 +11,11 @@ These should be fixed when this branch (integrate-tui) gets merged.
 - Syntax highlighting
 - Mouse support (dependent on terminal emulator)
 - Undo and redo history
+- Command palette (see section below for a list of commands)
 
 ### In-Progress
 Roughly listed in order of priority:
 - Directory opening (medium)
-- Refactor editor prompt for generic command input (hard)
 - Search (hard)
 - Better Ctrl-Arrow key navigation (medium)
 - Ask to reload file when changed on disk (hard)
@@ -39,3 +35,8 @@ Roughly listed in order of priority:
 - `Enter` - creates a line break by copying the line break at the end of the current line
 - `Escape` - exits the prompt (e.g. saving/opening a file) when active
 - Anything other than characters is currently ignored (note: doesn't even refresh editor)
+
+## Command Palette
+The following commands are implemented:
+- `save [file_path]` - Saves the current file as `file_path`
+- `open [file_path]` - Opens `file_path` in the current editor

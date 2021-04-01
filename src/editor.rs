@@ -240,7 +240,7 @@ impl Editor {
     //     }
     // }
 
-    pub fn save(&mut self) -> std::io::Result<()> {
+    pub fn save(&mut self) -> std::io::Result<bool> {
         if let Some(file_path) = &self.file_path {
             let file = std::fs::OpenOptions::new()
                 .truncate(true)
@@ -254,10 +254,15 @@ impl Editor {
             self.set_message(&"File saved.");
             self.buffer.set_clean();
             self.confirm_dirty = false;
+            Ok(true)
         } else {
-            self.prompt_message = Some("save ".to_string());
+            Ok(false)
         }
+    }
 
+    pub fn save_as(&mut self, path: PathBuf) -> std::io::Result<()> {
+        self.file_path = Some(path);
+        self.save()?;
         Ok(())
     }
 
@@ -581,7 +586,7 @@ impl Editor {
         self.confirm_dirty = false;
     }
 
-    fn set_message(&mut self, message: &dyn AsRef<str>) {
+    pub fn set_message(&mut self, message: &dyn AsRef<str>) {
         self.message = Some(format!(
             "{}: {}",
             Local::now().format("%I:%M:%S %P"),
