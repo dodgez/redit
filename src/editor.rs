@@ -125,20 +125,20 @@ impl Widget for &mut Editor {
                 let mut line = h
                     .map(|mut h| h.highlight(raw_line, &self.syntaxes))
                     .unwrap_or_else(|| vec![(default_style, raw_line)]);
-                if self.highlighting && y >= min(self.cy, self.hy) && y <= max(self.cy, self.hy) {
+                if self.highlighting && line_number >= min(self.cy, self.hy) && line_number <= max(self.cy, self.hy) {
                     if self.cy == self.hy {
                         if self.cx < self.hx {
                             line = modify_range(&line, self.cx..self.hx, highlight_style);
                         } else {
                             line = modify_range(&line, self.hx..self.cx, highlight_style);
                         }
-                    } else if y == min(self.cy, self.hy) {
+                    } else if line_number == min(self.cy, self.hy) {
                         if self.cy < self.hy {
                             line = modify_range(&line, self.cx..raw_line.len(), highlight_style);
                         } else {
                             line = modify_range(&line, self.hx..raw_line.len(), highlight_style);
                         }
-                    } else if y == max(self.cy, self.hy) {
+                    } else if line_number == max(self.cy, self.hy) {
                         if self.cy < self.hy {
                             line = modify_range(&line, 0..self.hx, highlight_style);
                         } else {
