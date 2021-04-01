@@ -2,7 +2,7 @@
 A simple text editor written in rust.
 
 The current features are broken:
-- editor prompt
+- editor prompt (needs to execute commands)
 These should be fixed when this branch (integrate-tui) gets merged.
 
 ## Features

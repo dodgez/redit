@@ -18,7 +18,10 @@ use tui::{
     Terminal,
 };
 
-use redit::editor::{Editor, Movement};
+use redit::{
+    editor::{Editor, Movement},
+    prompt::Prompt,
+};
 
 fn edit(file: Option<&str>) -> crossterm::Result<()> {
     let mut ps = SyntaxSet::load_defaults_newlines().into_builder();
@@ -55,6 +58,7 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     let mut clipboard = None;
+    let mut prompt: Option<Prompt> = None;
 
     let cur_pos = e.get_rel_cursor();
     terminal.draw(|f| {
@@ -155,114 +159,176 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                         }
                     }
                     KeyCode::Char('z') if event.modifiers == KeyModifiers::CONTROL => {
-                        e.undo();
+                        if prompt.is_none() {
+                            e.undo();
+                        }
                     }
                     KeyCode::Char('y') if event.modifiers == KeyModifiers::CONTROL => {
-                        e.redo();
+                        if prompt.is_none() {
+                            e.redo();
+                        }
                     }
                     KeyCode::Char('[') => {
-                        if editor_index == 0 {
-                            editor_index = editors.len() - 1;
-                        } else {
-                            editor_index -= 1;
+                        if prompt.is_none() {
+                            if editor_index == 0 {
+                                editor_index = editors.len() - 1;
+                            } else {
+                                editor_index -= 1;
+                            }
                         }
                     }
                     KeyCode::Char(']') => {
-                        if editor_index == editors.len() - 1 {
-                            editor_index = 0;
-                        } else {
-                            editor_index += 1;
+                        if prompt.is_none() {
+                            if editor_index == editors.len() - 1 {
+                                editor_index = 0;
+                            } else {
+                                editor_index += 1;
+                            }
                         }
                     }
                     KeyCode::Char('\\') => {
-                        editors.push(Editor::new(ps.clone()));
-                        let n = editors.len() - 1;
-                        e = editors.get_mut(n).unwrap();
-                        e.load_theme(theme.clone());
+                        if prompt.is_none() {
+                            editors.push(Editor::new(ps.clone()));
+                            let n = editors.len() - 1;
+                            e = editors.get_mut(n).unwrap();
+                            e.load_theme(theme.clone());
+                        }
                     }
                     KeyCode::Char('r') if event.modifiers == KeyModifiers::CONTROL => {
-                        e.try_reload()?;
+                        if prompt.is_none() {
+                            e.try_reload()?;
+                        }
                     }
                     KeyCode::Char('s') if event.modifiers == KeyModifiers::CONTROL => {
-                        e.save()?;
+                        if prompt.is_none() {
+                            e.save()?;
+                        }
                     }
                     KeyCode::Char('o') if event.modifiers == KeyModifiers::CONTROL => {
-                        e.open();
+                        if prompt.is_none() {
+                            prompt = Some(Prompt::new(Some("open ".to_string())));
+                        }
                     }
                     KeyCode::Char('c') if event.modifiers == KeyModifiers::CONTROL => {
-                        clipboard = Some(e.copy());
+                        if prompt.is_none() {
+                            clipboard = Some(e.copy());
+                        }
                     }
                     KeyCode::Char('x') if event.modifiers == KeyModifiers::CONTROL => {
-                        clipboard = Some(e.cut());
+                        if prompt.is_none() {
+                            clipboard = Some(e.cut());
+                        }
                     }
                     KeyCode::Char('v') if event.modifiers == KeyModifiers::CONTROL => {
-                        e.paste(&clipboard);
+                        if prompt.is_none() {
+                            e.paste(&clipboard);
+                        }
                     }
                     KeyCode::Left => {
-                        e.move_cursor(
-                            Movement::Relative(-dist, 0),
-                            event.modifiers.intersects(KeyModifiers::SHIFT),
-                        );
+                        if let Some(ref mut prompt) = prompt {
+                            prompt.move_cursor(-1);
+                        } else {
+                            e.move_cursor(
+                                Movement::Relative(-dist, 0),
+                                event.modifiers.intersects(KeyModifiers::SHIFT),
+                            );
+                        }
                     }
                     KeyCode::Right => {
-                        e.move_cursor(
-                            Movement::Relative(dist, 0),
-                            event.modifiers.intersects(KeyModifiers::SHIFT),
-                        );
+                        if let Some(ref mut prompt) = prompt {
+                            prompt.move_cursor(1);
+                        } else {
+                            e.move_cursor(
+                                Movement::Relative(dist, 0),
+                                event.modifiers.intersects(KeyModifiers::SHIFT),
+                            );
+                        }
                     }
                     KeyCode::Up => {
-                        e.move_cursor(
-                            Movement::Relative(0, -dist),
-                            event.modifiers.intersects(KeyModifiers::SHIFT),
-                        );
+                        if prompt.is_none() {
+                            e.move_cursor(
+                                Movement::Relative(0, -dist),
+                                event.modifiers.intersects(KeyModifiers::SHIFT),
+                            );
+                        }
                     }
                     KeyCode::Down => {
-                        e.move_cursor(
-                            Movement::Relative(0, dist),
-                            event.modifiers.intersects(KeyModifiers::SHIFT),
-                        );
+                        if prompt.is_none() {
+                            e.move_cursor(
+                                Movement::Relative(0, dist),
+                                event.modifiers.intersects(KeyModifiers::SHIFT),
+                            );
+                        }
                     }
                     KeyCode::Home => {
-                        e.move_cursor(
-                            Movement::Home,
-                            event.modifiers.intersects(KeyModifiers::SHIFT),
-                        );
+                        if prompt.is_none() {
+                            e.move_cursor(
+                                Movement::Home,
+                                event.modifiers.intersects(KeyModifiers::SHIFT),
+                            );
+                        }
                     }
                     KeyCode::End => {
-                        e.move_cursor(
-                            Movement::End,
-                            event.modifiers.intersects(KeyModifiers::SHIFT),
-                        );
+                        if prompt.is_none() {
+                            e.move_cursor(
+                                Movement::End,
+                                event.modifiers.intersects(KeyModifiers::SHIFT),
+                            );
+                        }
                     }
                     KeyCode::PageUp => {
-                        e.move_cursor(
-                            Movement::PageUp,
-                            event.modifiers.intersects(KeyModifiers::SHIFT),
-                        );
+                        if prompt.is_none() {
+                            e.move_cursor(
+                                Movement::PageUp,
+                                event.modifiers.intersects(KeyModifiers::SHIFT),
+                            );
+                        }
                     }
                     KeyCode::PageDown => {
-                        e.move_cursor(
-                            Movement::PageDown,
-                            event.modifiers.intersects(KeyModifiers::SHIFT),
-                        );
+                        if prompt.is_none() {
+                            e.move_cursor(
+                                Movement::PageDown,
+                                event.modifiers.intersects(KeyModifiers::SHIFT),
+                            );
+                        }
                     }
                     KeyCode::Backspace if event.modifiers == KeyModifiers::NONE => {
-                        e.backspace_char();
+                        if let Some(ref mut prompt) = prompt {
+                            prompt.backspace();
+                        } else {
+                            e.backspace_char();
+                        }
                     }
                     KeyCode::Enter if event.modifiers == KeyModifiers::NONE => {
-                        e.do_return();
+                        if prompt.is_none() {
+                            e.do_return();
+                        } else {
+                            panic!("Prompt return not implemented!");
+                        }
                     }
                     KeyCode::Delete if event.modifiers == KeyModifiers::NONE => {
-                        e.delete_char();
+                        if let Some(ref mut prompt) = prompt {
+                            prompt.delete_char();
+                        } else {
+                            e.delete_char();
+                        }
                     }
-                    // KeyCode::Esc if event.modifiers == KeyModifiers::NONE => {
-                    //     e.cancel_prompt();
-                    // }
+                    KeyCode::Esc if event.modifiers == KeyModifiers::NONE => {
+                        if prompt.is_some() {
+                            let mut un_prompt = prompt.unwrap();
+                            un_prompt.take_answer();
+                            prompt = None;
+                        }
+                    }
                     KeyCode::Char(c)
                         if event.modifiers == KeyModifiers::NONE
                             || event.modifiers == KeyModifiers::SHIFT =>
                     {
-                        e.write_char(c);
+                        if let Some(ref mut prompt) = prompt {
+                            prompt.add_char(c);
+                        } else {
+                            e.write_char(c);
+                        }
                     }
                     _ => {
                         continue;
@@ -271,35 +337,51 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
             }
         }
 
+        if prompt.is_none() {
+            if let Some(prompt_message) = editors[editor_index].take_prompt() {
+                prompt = Some(Prompt::new(Some(prompt_message)));
+            }
+        }
+
+        let mut prompt_cursor = tui::layout::Rect::default();
         terminal.draw(|f| {
             use tui::{
-                layout::Rect,
+                layout::{Constraint, Direction, Layout},
                 style::Style,
                 text::Spans,
                 widgets::{Block, Borders, Tabs},
             };
             let size = f.size();
-            let tab_block = Block::default()
+            let main_block = Block::default()
                 .borders(Borders::ALL)
                 .style(TuiStyle::default().fg(fg_color).bg(bg_color));
-            let inner_area = tab_block.inner(size);
+            let inner_area = main_block.inner(size);
+            let mut constraints = vec![Constraint::Length(1), Constraint::Min(1)];
+            if prompt.is_some() {
+                constraints.push(Constraint::Length(2));
+            }
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints(constraints)
+                .split(inner_area);
             let tabs = Tabs::new(editors.iter().map(|e| Spans::from(e.get_title())).collect())
                 .select(editor_index)
-                .block(tab_block)
                 .highlight_style(Style::default().fg(sel_color))
                 .divider("|");
-            f.render_widget(tabs, size);
-            f.render_widget(
-                &mut editors[editor_index],
-                Rect {
-                    x: inner_area.x,
-                    y: inner_area.y + 1,
-                    width: inner_area.width,
-                    height: inner_area.height - 1,
-                },
-            );
+            f.render_widget(main_block, size);
+            f.render_widget(tabs, chunks[0]);
+            f.render_widget(&mut editors[editor_index], chunks[1]);
+            if let Some(prompt) = prompt.clone() {
+                f.render_widget(prompt, chunks[2]);
+                prompt_cursor = chunks[2];
+            }
         })?;
-        let cur_pos = editors[editor_index].get_rel_cursor();
+        let cur_pos = if let Some(prompt) = prompt.clone() {
+            let cur = prompt.get_cursor();
+            (prompt_cursor.x + cur.0, prompt_cursor.y + cur.1)
+        } else {
+            editors[editor_index].get_rel_cursor()
+        };
         terminal.set_cursor(cur_pos.0, cur_pos.1)?;
         terminal.show_cursor()?;
     }

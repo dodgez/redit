@@ -45,12 +45,13 @@ pub struct Editor {
     confirm_dirty: bool,
     cx: usize,
     cy: usize,
+    draw_area: Rect,
     file_path: Option<PathBuf>,
     highlighting: bool,
     hx: usize,
     hy: usize,
     message: Option<String>,
-    draw_area: Rect,
+    prompt_message: Option<String>,
     render_opts: RenderConfig,
     row_offset: usize,
     rx: usize,
@@ -229,14 +230,15 @@ impl Editor {
         Ok(())
     }
 
-    pub fn open(&mut self) {
-        if !self.buffer.is_dirty() || self.confirm_dirty {
-            panic!("Prompt not implemented");
-        } else {
-            self.confirm_dirty = true;
-            self.set_message(&"Press Ctrl-o again to open a file");
-        }
-    }
+    // pub fn open(&mut self, file: String) {
+    //     if !self.buffer.is_dirty() || self.confirm_dirty {
+    //         self.prompt_active = true;
+    //         self.prompt_message = Some("File to open".to_string());
+    //     } else {
+    //         self.confirm_dirty = true;
+    //         self.set_message(&"Press Ctrl-o again to open a file");
+    //     }
+    // }
 
     pub fn save(&mut self) -> std::io::Result<()> {
         if let Some(file_path) = &self.file_path {
@@ -253,7 +255,7 @@ impl Editor {
             self.buffer.set_clean();
             self.confirm_dirty = false;
         } else {
-            panic!("Prompt not implemented");
+            self.prompt_message = Some("save ".to_string());
         }
 
         Ok(())
@@ -290,6 +292,10 @@ impl Editor {
             .map(|p| p.to_str().unwrap())
             .unwrap_or_else(|| "[No file]")
             .to_string()
+    }
+
+    pub fn take_prompt(&mut self) -> Option<String> {
+        self.prompt_message.take()
     }
 
     pub fn load_theme(&mut self, theme: Theme) {
