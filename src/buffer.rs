@@ -124,14 +124,14 @@ impl Buffer {
                 for i in 1..lines.len() - 1 {
                     self.insert_line(start_y + i, lines.get(i).unwrap().clone());
                 }
-                if self.get_line_count() < start_y + lines.len() {
-                    self.replace_line(
-                        start_y + lines.len(),
-                        lines.last().unwrap().get_raw().to_string() + &second_half,
+                if self.get_line_count() > start_y + lines.len() {
+                    self.insert_line(
+                        start_y + lines.len() - 1,
+                        Line::new(lines.last().unwrap().get_clean_raw().to_string() + &second_half),
                     );
                 } else {
                     self.lines.push(Line::new(
-                        lines.last().unwrap().get_raw().to_string() + &second_half,
+                        lines.last().unwrap().get_clean_raw().to_string() + &second_half,
                     ));
                 }
                 self.dirty = true;
