@@ -63,31 +63,37 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
     let cur_pos = e.get_rel_cursor();
     terminal.draw(|f| {
         use tui::{
-            layout::Rect,
+            layout::{Constraint, Direction, Layout},
             style::Style,
             text::Spans,
             widgets::{Block, Borders, Tabs},
         };
         let size = f.size();
-        let tab_block = Block::default()
+        let main_block = Block::default()
             .borders(Borders::ALL)
             .style(TuiStyle::default().fg(fg_color).bg(bg_color));
-        let inner_area = tab_block.inner(size);
+        let inner_area = main_block.inner(size);
+        let mut constraints = vec![Constraint::Length(1), Constraint::Min(1)];
+        if prompt.is_some() {
+            constraints.push(Constraint::Length(2));
+        }
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(constraints)
+            .split(inner_area);
         let tabs = Tabs::new(editors.iter().map(|e| Spans::from(e.get_title())).collect())
-            .block(tab_block)
+            .select(editor_index)
             .highlight_style(Style::default().fg(sel_color))
             .divider("|");
-        f.render_widget(tabs, size);
-        f.render_widget(
-            &mut editors[0],
-            Rect {
-                x: inner_area.x,
-                y: inner_area.y + 1,
-                width: inner_area.width,
-                height: inner_area.height - 1,
-            },
-        );
+        f.render_widget(main_block, size);
+        f.render_widget(tabs, chunks[0]);
+        f.render_widget(&mut editors[editor_index], chunks[1]);
+        if let Some(prompt) = prompt.clone() {
+            f.render_widget(prompt, chunks[2]);
+            // prompt_cursor = chunks[2];
+        }
     })?;
+
     terminal.set_cursor(cur_pos.0, cur_pos.1)?;
     terminal.show_cursor()?;
 
@@ -344,6 +350,7 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
         }
 
         let mut prompt_cursor = tui::layout::Rect::default();
+        terminal.hide_cursor()?;
         terminal.draw(|f| {
             use tui::{
                 layout::{Constraint, Direction, Layout},
@@ -406,3 +413,4 @@ pub fn main() -> std::io::Result<()> {
 
     Ok(())
 }
+            
