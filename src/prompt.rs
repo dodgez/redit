@@ -1,83 +1,82 @@
-use std::io::prelude::*;
+use tui::{
+    buffer::Buffer,
+    layout::Rect,
+    style::Style,
+    widgets::{Block, Borders, Widget},
+};
 
-pub enum PromptPurpose {
-    None,
-    Open,
-    Save,
-}
-
-impl Default for PromptPurpose {
-    fn default() -> PromptPurpose {
-        PromptPurpose::None
-    }
-}
-
-#[derive(Default)]
+#[derive(Clone)]
 pub struct Prompt {
-    active: bool,
-    answer: Option<String>,
-    message: Option<String>,
-    pub purpose: PromptPurpose,
+    cx: usize,
+    response: Option<String>,
+}
+
+impl Widget for Prompt {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        let block = Block::default().borders(Borders::TOP);
+        let inner_area = block.inner(area);
+        block.render(area, buf);
+        buf.set_stringn(
+            inner_area.x,
+            inner_area.y,
+            ">".to_string() + self.response.as_ref().unwrap_or(&"".to_string()),
+            inner_area.width as usize,
+            Style::default(),
+        );
+    }
 }
 
 impl Prompt {
-    pub fn new(message: String, purpose: PromptPurpose) -> Prompt {
+    pub fn new(message: Option<String>) -> Self {
         Prompt {
-            active: true,
-            answer: None,
-            message: Some(message),
-            purpose,
+            cx: message.clone().map(|s| s.len()).unwrap_or(0),
+            response: message,
         }
     }
 
-    pub fn get_answer(&self) -> Option<&String> {
-        self.answer.as_ref()
-    }
-
-    pub fn exit(&mut self) {
-        self.active = false;
-        self.answer = None;
-        self.message = None;
+    pub fn delete_char(&mut self) {
+        if let Some(res) = &self.response {
+            if self.cx < res.len() {
+                let mut res = res.to_string();
+                res.remove(self.cx).to_string();
+                self.response = Some(res);
+            }
+        }
     }
 
     pub fn add_char(&mut self, c: char) {
-        match &mut self.answer {
-            None => {
-                self.answer = Some(c.to_string());
-            }
-            Some(s) => {
-                s.push(c);
-            }
+        let mut res = self.response.as_ref().unwrap_or(&"".to_string()).clone();
+        res.push(c);
+        self.response = Some(res);
+        self.cx += 1;
+    }
+
+    pub fn backspace(&mut self) {
+        if self.cx > 0 {
+            self.cx -= 1;
+            self.delete_char();
         }
     }
 
-    pub fn remove_char(&mut self) {
-        if let Some(mut answer) = self.answer.clone() {
-            answer.pop();
-            self.answer = Some(answer);
-        }
-    }
-
-    pub fn is_active(&self) -> bool {
-        self.active
-    }
-
-    pub fn draw<W: Write>(&self, stdout: &mut W) -> std::io::Result<()> {
-        let answer = self
-            .answer
-            .as_ref()
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| "".to_string());
-        if let Some(message) = self.message.as_ref() {
-            stdout.write_all(format!("{}: {}", message, answer).as_bytes())?;
+    pub fn move_cursor(&mut self, dx: isize) {
+        if dx >= 0 {
+            self.cx = std::cmp::min(
+                self.response.as_ref().unwrap_or(&"".to_string()).len(),
+                self.cx + dx as usize,
+            );
+        } else if self.cx as isize + dx >= 0 {
+            self.cx = (self.cx as isize + dx) as usize;
         } else {
-            stdout.write_all(answer.as_bytes())?;
+            self.cx = 0;
         }
-        Ok(())
     }
 
-    pub fn get_length(&self) -> u16 {
-        (self.message.as_ref().map(|m| m.len() + 2).unwrap_or(0)
-            + self.answer.as_ref().map(|s| s.len()).unwrap_or(0)) as u16
+    pub fn get_cursor(&self) -> (u16, u16) {
+        (self.cx as u16 + 1, 1) // +1 for > character and 1 for top border
+    }
+
+    pub fn take_answer(&mut self) -> Option<String> {
+        self.cx = 0;
+        self.response.take()
     }
 }

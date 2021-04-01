@@ -2,22 +2,26 @@ use std::path::PathBuf;
 
 use clap::{App, Arg};
 use crossterm::{
-    cursor::{Hide, MoveTo, RestorePosition, SavePosition, Show},
     event::{read, EnableMouseCapture, Event, KeyCode, KeyModifiers, MouseEventKind},
     execute,
-    style::{Color, SetBackgroundColor, SetForegroundColor},
-    terminal::{
-        disable_raw_mode, enable_raw_mode, size, Clear, ClearType, EnterAlternateScreen,
-        LeaveAlternateScreen,
-    },
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    ExecutableCommand,
 };
 use dirs::home_dir;
 use syntect::{
     highlighting::{Color as SynColor, ThemeSet},
     parsing::SyntaxSet,
 };
+use tui::{
+    backend::CrosstermBackend,
+    style::{Color as TuiColor, Style as TuiStyle},
+    Terminal,
+};
 
-use redit::editor::{Editor, Movement};
+use redit::{
+    editor::{Editor, Movement},
+    prompt::Prompt,
+};
 
 fn edit(file: Option<&str>) -> crossterm::Result<()> {
     let mut ps = SyntaxSet::load_defaults_newlines().into_builder();
@@ -30,70 +34,89 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
     }
     let ps = ps.build();
     let theme = &ThemeSet::load_defaults().themes["Solarized (dark)"];
-    let background_color = theme.settings.background.unwrap_or(SynColor::BLACK);
-    let background_color = Color::Rgb {
-        r: background_color.r,
-        g: background_color.g,
-        b: background_color.b,
-    };
-    let foreground_color = theme.settings.foreground.unwrap_or(SynColor::WHITE);
-    let foreground_color = Color::Rgb {
-        r: foreground_color.r,
-        g: foreground_color.g,
-        b: foreground_color.b,
-    };
+    let bg = theme.settings.background.unwrap_or(SynColor::BLACK);
+    let bg_color = TuiColor::Rgb(bg.r, bg.g, bg.b);
+    let fg = theme.settings.foreground.unwrap_or(SynColor::WHITE);
+    let fg_color = TuiColor::Rgb(fg.r, fg.g, fg.b);
+    let sel = theme.settings.accent.unwrap_or(SynColor::WHITE);
+    let sel_color = TuiColor::Rgb(sel.r, sel.g, sel.b);
 
-    #[cfg(target_family = "windows")]
-    let initial_size = size()?;
-    #[cfg(target_family = "unix")]
-    let initial_size = {
-        let size = size()?;
-        (size.0 - 1, size.1 - 1)
-    };
-    let mut editors = vec![Editor::new(
-        initial_size.1.into(),
-        initial_size.0.into(),
-        ps.clone(),
-    )];
+    let mut editors = vec![Editor::new(ps.clone())];
     let mut editor_index = 0;
     let mut e = editors.get_mut(editor_index).unwrap();
+    e.load_theme(theme.clone());
     if let Some(file) = file {
         e.open_file(&file)?
     };
 
     let mut stdout = std::io::stdout();
-    execute!(
-        stdout,
-        EnterAlternateScreen,
-        SetBackgroundColor(background_color),
-        SetForegroundColor(foreground_color)
-    )?;
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
 
     enable_raw_mode()?;
 
-    e.draw(&mut stdout, theme)?;
-    e.move_cursor(Movement::BegFile, false);
-    let cur_pos = e.get_rel_cursor();
-    execute!(stdout, MoveTo(cur_pos.0, cur_pos.1), EnableMouseCapture)?;
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
 
     let mut clipboard = None;
+    let mut prompt: Option<Prompt> = None;
+
+    let cur_pos = e.get_rel_cursor();
+    terminal.draw(|f| {
+        use tui::{
+            layout::{Constraint, Direction, Layout},
+            style::Style,
+            text::Spans,
+            widgets::{Block, Borders, Tabs},
+        };
+        let size = f.size();
+        let main_block = Block::default()
+            .borders(Borders::ALL)
+            .style(TuiStyle::default().fg(fg_color).bg(bg_color));
+        let inner_area = main_block.inner(size);
+        let mut constraints = vec![Constraint::Length(1), Constraint::Min(1)];
+        if prompt.is_some() {
+            constraints.push(Constraint::Length(2));
+        }
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(constraints)
+            .split(inner_area);
+        let tabs = Tabs::new(editors.iter().map(|e| Spans::from(e.get_title())).collect())
+            .select(editor_index)
+            .highlight_style(Style::default().fg(sel_color))
+            .divider("|");
+        f.render_widget(main_block, size);
+        f.render_widget(tabs, chunks[0]);
+        f.render_widget(&mut editors[editor_index], chunks[1]);
+        if let Some(prompt) = prompt.clone() {
+            f.render_widget(prompt, chunks[2]);
+            // prompt_cursor = chunks[2];
+        }
+    })?;
+
+    terminal.set_cursor(cur_pos.0, cur_pos.1)?;
+    terminal.show_cursor()?;
 
     loop {
-        let event = read()?;
         e = editors.get_mut(editor_index).unwrap();
 
+        let event = read()?;
         match event {
             Event::Resize(width, height) => {
-                execute!(stdout, Clear(ClearType::All))?;
                 #[cfg(target_family = "windows")]
-                e.resize(width as usize, height as usize);
+                terminal.resize(tui::layout::Rect {
+                    x: 0,
+                    y: 0,
+                    width,
+                    height,
+                })?;
                 #[cfg(target_family = "unix")]
-                e.resize(width as usize - 1, height as usize - 1);
-                execute!(
-                    stdout,
-                    SetBackgroundColor(background_color),
-                    SetForegroundColor(foreground_color)
-                )?;
+                terminal.resize(tui::layout::Rect {
+                    x: 0,
+                    y: 0,
+                    width: width - 1,
+                    height: height - 1,
+                })?;
             }
             Event::Mouse(event) => match event.kind {
                 MouseEventKind::ScrollDown => {
@@ -138,121 +161,209 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                             } else {
                                 editors.remove(editor_index);
                                 editor_index = 0;
-                                e = editors.get_mut(editor_index).unwrap();
                             }
                         }
                     }
                     KeyCode::Char('z') if event.modifiers == KeyModifiers::CONTROL => {
-                        e.undo();
+                        if prompt.is_none() {
+                            e.undo();
+                        }
                     }
                     KeyCode::Char('y') if event.modifiers == KeyModifiers::CONTROL => {
-                        e.redo();
+                        if prompt.is_none() {
+                            e.redo();
+                        }
                     }
                     KeyCode::Char('[') => {
-                        if editor_index == 0 {
-                            editor_index = editors.len() - 1;
-                        } else {
-                            editor_index -= 1;
+                        if prompt.is_none() {
+                            if editor_index == 0 {
+                                editor_index = editors.len() - 1;
+                            } else {
+                                editor_index -= 1;
+                            }
                         }
-                        e = editors.get_mut(editor_index).unwrap();
                     }
                     KeyCode::Char(']') => {
-                        if editor_index == editors.len() - 1 {
-                            editor_index = 0;
-                        } else {
-                            editor_index += 1;
+                        if prompt.is_none() {
+                            if editor_index == editors.len() - 1 {
+                                editor_index = 0;
+                            } else {
+                                editor_index += 1;
+                            }
                         }
-                        e = editors.get_mut(editor_index).unwrap();
                     }
                     KeyCode::Char('\\') => {
-                        let size = size()?;
-                        editors.push(Editor::new(size.1.into(), size.0.into(), ps.clone()));
-                        let n = editors.len() - 1;
-                        e = editors.get_mut(n).unwrap();
+                        if prompt.is_none() {
+                            editors.push(Editor::new(ps.clone()));
+                            let n = editors.len() - 1;
+                            e = editors.get_mut(n).unwrap();
+                            e.load_theme(theme.clone());
+                        }
                     }
                     KeyCode::Char('r') if event.modifiers == KeyModifiers::CONTROL => {
-                        e.try_reload()?;
+                        if prompt.is_none() {
+                            e.try_reload()?;
+                        }
                     }
                     KeyCode::Char('s') if event.modifiers == KeyModifiers::CONTROL => {
-                        e.save()?;
+                        if prompt.is_none() && !e.save()? {
+                            prompt = Some(Prompt::new(Some("save ".to_string())));
+                        }
                     }
                     KeyCode::Char('o') if event.modifiers == KeyModifiers::CONTROL => {
-                        e.open();
+                        if prompt.is_none() {
+                            prompt = Some(Prompt::new(Some("open ".to_string())));
+                        }
                     }
                     KeyCode::Char('c') if event.modifiers == KeyModifiers::CONTROL => {
-                        clipboard = Some(e.copy());
+                        if prompt.is_none() {
+                            clipboard = Some(e.copy());
+                        }
                     }
                     KeyCode::Char('x') if event.modifiers == KeyModifiers::CONTROL => {
-                        clipboard = Some(e.cut());
+                        if prompt.is_none() {
+                            clipboard = Some(e.cut());
+                        }
                     }
                     KeyCode::Char('v') if event.modifiers == KeyModifiers::CONTROL => {
-                        e.paste(&clipboard);
+                        if prompt.is_none() {
+                            e.paste(&clipboard);
+                        }
                     }
                     KeyCode::Left => {
-                        e.move_cursor(
-                            Movement::Relative(-dist, 0),
-                            event.modifiers.intersects(KeyModifiers::SHIFT),
-                        );
+                        if let Some(ref mut prompt) = prompt {
+                            prompt.move_cursor(-1);
+                        } else {
+                            e.move_cursor(
+                                Movement::Relative(-dist, 0),
+                                event.modifiers.intersects(KeyModifiers::SHIFT),
+                            );
+                        }
                     }
                     KeyCode::Right => {
-                        e.move_cursor(
-                            Movement::Relative(dist, 0),
-                            event.modifiers.intersects(KeyModifiers::SHIFT),
-                        );
+                        if let Some(ref mut prompt) = prompt {
+                            prompt.move_cursor(1);
+                        } else {
+                            e.move_cursor(
+                                Movement::Relative(dist, 0),
+                                event.modifiers.intersects(KeyModifiers::SHIFT),
+                            );
+                        }
                     }
                     KeyCode::Up => {
-                        e.move_cursor(
-                            Movement::Relative(0, -dist),
-                            event.modifiers.intersects(KeyModifiers::SHIFT),
-                        );
+                        if prompt.is_none() {
+                            e.move_cursor(
+                                Movement::Relative(0, -dist),
+                                event.modifiers.intersects(KeyModifiers::SHIFT),
+                            );
+                        }
                     }
                     KeyCode::Down => {
-                        e.move_cursor(
-                            Movement::Relative(0, dist),
-                            event.modifiers.intersects(KeyModifiers::SHIFT),
-                        );
+                        if prompt.is_none() {
+                            e.move_cursor(
+                                Movement::Relative(0, dist),
+                                event.modifiers.intersects(KeyModifiers::SHIFT),
+                            );
+                        }
                     }
                     KeyCode::Home => {
-                        e.move_cursor(
-                            Movement::Home,
-                            event.modifiers.intersects(KeyModifiers::SHIFT),
-                        );
+                        if prompt.is_none() {
+                            e.move_cursor(
+                                Movement::Home,
+                                event.modifiers.intersects(KeyModifiers::SHIFT),
+                            );
+                        }
                     }
                     KeyCode::End => {
-                        e.move_cursor(
-                            Movement::End,
-                            event.modifiers.intersects(KeyModifiers::SHIFT),
-                        );
+                        if prompt.is_none() {
+                            e.move_cursor(
+                                Movement::End,
+                                event.modifiers.intersects(KeyModifiers::SHIFT),
+                            );
+                        }
                     }
                     KeyCode::PageUp => {
-                        e.move_cursor(
-                            Movement::PageUp,
-                            event.modifiers.intersects(KeyModifiers::SHIFT),
-                        );
+                        if prompt.is_none() {
+                            e.move_cursor(
+                                Movement::PageUp,
+                                event.modifiers.intersects(KeyModifiers::SHIFT),
+                            );
+                        }
                     }
                     KeyCode::PageDown => {
-                        e.move_cursor(
-                            Movement::PageDown,
-                            event.modifiers.intersects(KeyModifiers::SHIFT),
-                        );
+                        if prompt.is_none() {
+                            e.move_cursor(
+                                Movement::PageDown,
+                                event.modifiers.intersects(KeyModifiers::SHIFT),
+                            );
+                        }
                     }
                     KeyCode::Backspace if event.modifiers == KeyModifiers::NONE => {
-                        e.backspace_char();
+                        if let Some(ref mut prompt) = prompt {
+                            prompt.backspace();
+                        } else {
+                            e.backspace_char();
+                        }
                     }
                     KeyCode::Enter if event.modifiers == KeyModifiers::NONE => {
-                        e.do_return();
+                        if prompt.is_none() {
+                            e.do_return();
+                        } else {
+                            let response = prompt
+                                .unwrap()
+                                .take_answer()
+                                .unwrap_or_else(|| "".to_string());
+                            prompt = None;
+                            let info: Vec<&str> = response.split(' ').collect();
+                            match info[0] {
+                                "save" => {
+                                    if info.len() > 1 {
+                                        e.save_as(std::path::PathBuf::from(info[1]))?;
+                                    } else {
+                                        e.set_message(&"Specify path to save");
+                                    }
+                                }
+                                "open" => {
+                                    if info.len() > 1 {
+                                        let path = std::path::PathBuf::from(info[1]);
+                                        if !path.exists() {
+                                            e.set_message(&"File does not exist");
+                                        } else {
+                                            e.open_file(&path)?;
+                                        }
+                                    } else {
+                                        e.set_message(&"Specify file to open");
+                                    }
+                                }
+                                _ => {
+                                    e.set_message(&format!("Command not recognized {}", info[0]));
+                                }
+                            }
+                        }
                     }
                     KeyCode::Delete if event.modifiers == KeyModifiers::NONE => {
-                        e.delete_char();
+                        if let Some(ref mut prompt) = prompt {
+                            prompt.delete_char();
+                        } else {
+                            e.delete_char();
+                        }
                     }
                     KeyCode::Esc if event.modifiers == KeyModifiers::NONE => {
-                        e.cancel_prompt();
+                        if prompt.is_some() {
+                            let mut un_prompt = prompt.unwrap();
+                            un_prompt.take_answer();
+                            prompt = None;
+                        }
                     }
                     KeyCode::Char(c)
                         if event.modifiers == KeyModifiers::NONE
                             || event.modifiers == KeyModifiers::SHIFT =>
                     {
-                        e.write_char(c);
+                        if let Some(ref mut prompt) = prompt {
+                            prompt.add_char(c);
+                        } else {
+                            e.write_char(c);
+                        }
                     }
                     _ => {
                         continue;
@@ -261,21 +372,58 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
             }
         }
 
-        let cur_pos = e.get_rel_cursor();
-        execute!(
-            stdout,
-            Hide,
-            MoveTo(cur_pos.0, cur_pos.1),
-            SavePosition,
-            Clear(ClearType::CurrentLine),
-            MoveTo(0, 0)
-        )?;
-        e.draw(&mut stdout, theme)?;
-        execute!(stdout, RestorePosition, Show)?;
+        if prompt.is_none() {
+            if let Some(prompt_message) = editors[editor_index].take_prompt() {
+                prompt = Some(Prompt::new(Some(prompt_message)));
+            }
+        }
+
+        let mut prompt_cursor = tui::layout::Rect::default();
+        terminal.hide_cursor()?;
+        terminal.draw(|f| {
+            use tui::{
+                layout::{Constraint, Direction, Layout},
+                style::Style,
+                text::Spans,
+                widgets::{Block, Borders, Tabs},
+            };
+            let size = f.size();
+            let main_block = Block::default()
+                .borders(Borders::ALL)
+                .style(TuiStyle::default().fg(fg_color).bg(bg_color));
+            let inner_area = main_block.inner(size);
+            let mut constraints = vec![Constraint::Length(1), Constraint::Min(1)];
+            if prompt.is_some() {
+                constraints.push(Constraint::Length(2));
+            }
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints(constraints)
+                .split(inner_area);
+            let tabs = Tabs::new(editors.iter().map(|e| Spans::from(e.get_title())).collect())
+                .select(editor_index)
+                .highlight_style(Style::default().fg(sel_color))
+                .divider("|");
+            f.render_widget(main_block, size);
+            f.render_widget(tabs, chunks[0]);
+            f.render_widget(&mut editors[editor_index], chunks[1]);
+            if let Some(prompt) = prompt.clone() {
+                f.render_widget(prompt, chunks[2]);
+                prompt_cursor = chunks[2];
+            }
+        })?;
+        let cur_pos = if let Some(prompt) = prompt.clone() {
+            let cur = prompt.get_cursor();
+            (prompt_cursor.x + cur.0, prompt_cursor.y + cur.1)
+        } else {
+            editors[editor_index].get_rel_cursor()
+        };
+        terminal.set_cursor(cur_pos.0, cur_pos.1)?;
+        terminal.show_cursor()?;
     }
 
     disable_raw_mode()?;
-    execute!(stdout, LeaveAlternateScreen)?;
+    terminal.backend_mut().execute(LeaveAlternateScreen)?;
 
     Ok(())
 }

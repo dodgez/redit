@@ -13,17 +13,19 @@ enum Action {
 }
 
 pub struct Buffer {
-    lines: Vec<Line>,
+    dirty: bool,
     history: Vec<Action>,
     index: usize,
+    lines: Vec<Line>,
 }
 
 impl Default for Buffer {
     fn default() -> Self {
         Buffer {
-            lines: vec![],
+            dirty: false,
             history: vec![],
             index: 0,
+            lines: vec![],
         }
     }
 }
@@ -44,9 +46,10 @@ impl Buffer {
         if log {
             self.log(Action::InsertChar(line_index, column, c));
         }
+        self.dirty = true;
     }
 
-    pub fn delete_char(&mut self, line_index: usize, column: usize, log: bool) -> bool {
+    pub fn delete_char(&mut self, line_index: usize, column: usize, log: bool) {
         let line = self.lines.get(line_index).unwrap();
         if column < line.get_clean_raw().len() {
             let mut s = line.get_raw().to_string();
@@ -59,7 +62,7 @@ impl Buffer {
             }
             s.remove(column);
             self.lines[line_index] = Line::new(s);
-            true
+            self.dirty = true;
         } else if line_index + 1 < self.get_line_count() {
             let line = line.get_clean_raw();
             let other_line = self
@@ -69,12 +72,11 @@ impl Buffer {
                 .get_raw()
                 .to_string();
             self.replace_line(line_index, line.to_string() + &other_line);
+            self.remove_line(line_index + 1);
             if log {
                 self.log(Action::JoinLine(line_index, line.len()));
             }
-            true
-        } else {
-            false
+            self.dirty = true;
         }
     }
 
@@ -93,6 +95,7 @@ impl Buffer {
         if log {
             self.log(Action::SplitLine(line_index, parts.0.len()));
         }
+        self.dirty = true;
     }
 
     pub fn insert_region(
@@ -131,6 +134,7 @@ impl Buffer {
                         lines.last().unwrap().get_raw().to_string() + &second_half,
                     ));
                 }
+                self.dirty = true;
                 (
                     lines.last().unwrap().get_raw().len(),
                     start_y + lines.len() - 1,
@@ -141,6 +145,7 @@ impl Buffer {
                     start_y,
                     first_half.to_string() + &lines.get(0).unwrap().get_clean_raw() + &second_half,
                 );
+                self.dirty = true;
                 (
                     first_half.len() + lines.get(0).unwrap().get_clean_raw().len(),
                     start_y,
@@ -228,6 +233,7 @@ impl Buffer {
             line.replace_range(start_x..end_x, "");
             self.replace_line(start_y, line);
         }
+        self.dirty = true;
     }
 
     pub fn get_line_count(&self) -> usize {
@@ -318,6 +324,14 @@ impl Buffer {
             }
             self.index += 1;
         }
+    }
+
+    pub fn is_dirty(&self) -> bool {
+        self.dirty
+    }
+
+    pub fn set_clean(&mut self) {
+        self.dirty = false;
     }
 
     fn insert_line(&mut self, line_index: usize, line: Line) {
