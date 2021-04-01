@@ -65,8 +65,13 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
     let mut e = editors.get_mut(editor_index).unwrap();
     e.load_theme(theme.clone());
     if let Some(file) = file {
-        e.open_file(&file)?
-    };
+        if file.starts_with('~') {
+            let path = home_dir().expect("Cannot find home directory").join(file.split_at(2).1);
+            e.open_file(&path.to_str().expect("Failed to use home directory"))?;
+        } else {
+            e.open_file(&file)?;
+        }
+    }
 
     let mut stdout = std::io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
@@ -456,7 +461,7 @@ pub fn main() -> std::io::Result<()> {
         .get_matches();
 
     if let Err(e) = edit(matches.value_of("FILE")) {
-        eprintln!("{}", e);
+        eprintln!("{:?}", e);
     }
 
     Ok(())
