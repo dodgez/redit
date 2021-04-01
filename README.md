@@ -3,7 +3,6 @@ A simple text editor written in rust.
 
 The current features are broken:
 - editor prompt (needs to execute commands)
-- Delete and backspace are not deleting lines
 These should be fixed when this branch (integrate-tui) gets merged.
 
 ## Features

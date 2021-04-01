@@ -72,6 +72,7 @@ impl Buffer {
                 .get_raw()
                 .to_string();
             self.replace_line(line_index, line.to_string() + &other_line);
+            self.remove_line(line_index + 1);
             if log {
                 self.log(Action::JoinLine(line_index, line.len()));
             }
