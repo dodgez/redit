@@ -487,8 +487,7 @@ impl Editor {
         if self.highlighting {
             self.remove_highlight();
             self.highlighting = false;
-        }
-        if self.cx > 0 || self.cy > 0 {
+        } else if self.cx > 0 || self.cy > 0 {
             self.move_cursor(Movement::Relative(-1, 0), false);
             self.delete_char();
             self.confirm_dirty = false;
@@ -545,36 +544,6 @@ impl Editor {
             }
         }
     }
-
-    // fn check_prompt(&mut self) {
-    //     let answer = self.prompt.get_answer();
-    //     match self.prompt.purpose {
-    //         PromptPurpose::Save => {
-    //             if let Some(answer) = answer {
-    //                 self.file_path = Some(Path::new(answer).to_path_buf());
-    //                 if let Err(e) = self.save() {
-    //                     self.set_message(&"Error writing to file");
-    //                 }
-    //             }
-    //         }
-    //         PromptPurpose::Open => {
-    //             if let Some(answer) = answer {
-    //                 let path = Path::new(answer).to_path_buf();
-    //                 if let Err(e) = self.open_file(&path) {
-    //                     self.set_message(&"Error opening file");
-    //                 }
-    //             }
-    //         }
-    //         _ => {}
-    //     }
-    //     self.cancel_prompt();
-    // }
-
-    // pub fn cancel_prompt(&mut self) {
-    //     self.confirm_dirty = false;
-    //     self.prompt.exit();
-    //     self.message = None;
-    // }
 
     pub fn undo(&mut self) {
         self.buffer.undo();
