@@ -1,9 +1,13 @@
 # redit
 A simple text editor written in rust.
 
+<img src="./docs/screenshots/basic.png" alt="Screenshot of redit opened in Windows and Linux showing two themes" width="800" />
+
+Redit opened in Windows and Linux (WSL) showing the Dracula theme (separate) and the default Solarized dark theme.
+
 ## Features
 - Terminal listens to resize events
-- Ctrl-Arrow key navigation
+- Page Up/Down, Home/End, Arrow, and Ctrl-Arrow key navigation
 - Select text with Shift
 - Multiple file buffers
 - Copy and Paste (not yet using system clipboard)

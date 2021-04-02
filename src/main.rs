@@ -57,7 +57,7 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
     let bg_color = TuiColor::Rgb(bg.r, bg.g, bg.b);
     let fg = theme.settings.foreground.unwrap_or(SynColor::WHITE);
     let fg_color = TuiColor::Rgb(fg.r, fg.g, fg.b);
-    let sel = theme.settings.accent.unwrap_or(SynColor::WHITE);
+    let sel = theme.settings.accent.unwrap_or(SynColor {r: 0, g: 0xFF, b: 0xFF, a: 0xFF});
     let sel_color = TuiColor::Rgb(sel.r, sel.g, sel.b);
 
     let mut editors = vec![Editor::new(ps.clone())];
