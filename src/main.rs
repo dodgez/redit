@@ -84,7 +84,6 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
     let mut clipboard = None;
     let mut prompt: Option<Prompt> = None;
 
-    let cur_pos = e.get_rel_cursor();
     terminal.draw(|f| {
         use tui::{
             layout::{Constraint, Direction, Layout},
@@ -117,6 +116,7 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
             // prompt_cursor = chunks[2];
         }
     })?;
+    let cur_pos = editors[editor_index].get_rel_cursor();
 
     terminal.set_cursor(cur_pos.0, cur_pos.1)?;
     terminal.show_cursor()?;
@@ -156,14 +156,16 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                     );
                 }
                 MouseEventKind::Down(_) => {
+                    let cur_pos = (event.column as usize, event.row as usize);
                     e.move_cursor(
-                        Movement::AbsoluteScreen(event.column as usize, event.row as usize),
+                        Movement::AbsoluteScreen(cur_pos.0 - e.draw_area.x as usize, cur_pos.1 - e.draw_area.y as usize),
                         event.modifiers.intersects(KeyModifiers::SHIFT),
                     );
                 }
                 MouseEventKind::Drag(_) => {
+                    let cur_pos = (event.column as usize, event.row as usize);
                     e.move_cursor(
-                        Movement::AbsoluteScreen(event.column as usize, event.row as usize),
+                        Movement::AbsoluteScreen(cur_pos.0 - e.draw_area.x as usize, cur_pos.1 - e.draw_area.y as usize),
                         true,
                     );
                 }

@@ -45,7 +45,7 @@ pub struct Editor {
     confirm_dirty: bool,
     cx: usize,
     cy: usize,
-    draw_area: Rect,
+    pub draw_area: Rect,
     file_path: Option<PathBuf>,
     highlighting: bool,
     hx: usize,
