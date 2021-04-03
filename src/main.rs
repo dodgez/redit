@@ -244,6 +244,11 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                             prompt = Some(Prompt::new(Some("open ".to_string())));
                         }
                     }
+                    KeyCode::Char('e') if event.modifiers == KeyModifiers::CONTROL => {
+                        if prompt.is_none() {
+                            prompt = Some(Prompt::new(Some("".to_string())));
+                        }
+                    }
                     KeyCode::Char('c') if event.modifiers == KeyModifiers::CONTROL => {
                         if prompt.is_none() {
                             clipboard = Some(e.copy());
@@ -370,6 +375,19 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                                         }
                                     } else {
                                         e.set_message(&"Specify file to open");
+                                    }
+                                }
+                                "reload" => {
+                                    e.try_reload()?;
+                                }
+                                "quit" => {
+                                    if e.try_quit() {
+                                        if editors.len() == 1 {
+                                            break;
+                                        } else {
+                                            editors.remove(editor_index);
+                                            editor_index = 0;
+                                        }
                                     }
                                 }
                                 _ => {

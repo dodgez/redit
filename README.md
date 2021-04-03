@@ -15,7 +15,7 @@ Redit opened in Windows and Linux (WSL) showing the Dracula theme (separate) and
 - Syntax highlighting
 - Mouse support (dependent on terminal emulator)
 - Undo and redo history
-- Command palette (see section below for a list of commands)
+- [Command palette](#command-palette)
 
 ### In-Progress
 Roughly listed in order of priority:
@@ -30,6 +30,7 @@ Roughly listed in order of priority:
 - `Ctrl-r` - reloads the current file from disk
 - `Ctrl-s` - saves the currently open file (or asks where to save new file)
 - `Ctrl-o` - opens a file
+- `Ctrl-e` - opens the [command palette](#command-palette)
 - `Ctrl-c`, `Ctrl-x`, `Ctrl-v` - copy, cut, and paste respectively (works across editor buffers)
 - `Ctrl-p` or `Ctrl-n` - switch to the previous or next editor respectively
 - `Ctrl-b` - creates a new editor
@@ -37,10 +38,12 @@ Roughly listed in order of priority:
 - `PageUp` or `PageDown` - moves (up to) one screen height up or down
 - `Backspace` or `Delete` - deletes the character directly behind or in front of the cursor
 - `Enter` - creates a line break by copying the line break at the end of the current line
-- `Escape` - exits the prompt (e.g. saving/opening a file) when active
+- `Escape` - exits the command palette if active
 - Anything other than characters is currently ignored (note: doesn't even refresh editor)
 
 ## Command Palette
 The following commands are implemented:
 - `save [file_path]` - Saves the current file as `file_path`
-- `open [file_path]` - Opens `file_path` in the current editor
+- `open [file_path]` - Opens `file_path` in the current editor (gracefully asks to discard changes)
+- `reload` - Reloads the current file from disk (gracefully asks to discard changes)
+- `quit` - Closes the current editor (gracefully asks to discard changes) or closes program on last editor quit
