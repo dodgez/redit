@@ -289,6 +289,9 @@ impl Buffer {
                 }
             }
             self.index -= 1;
+            if self.index == 0 {
+                self.dirty = false;
+            }
         }
     }
 

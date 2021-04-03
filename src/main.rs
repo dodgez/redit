@@ -170,7 +170,8 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                         event.modifiers.intersects(KeyModifiers::SHIFT),
                     ),
                     MouseEventKind::Drag(_) => {
-                        e.move_cursor(Movement::AbsoluteScreen(cur_pos.0 + 1, cur_pos.1), true) // +1 to include char under cursor
+                        e.move_cursor(Movement::AbsoluteScreen(cur_pos.0 + 1, cur_pos.1), true)
+                        // +1 to include char under cursor
                     }
                     _ => continue,
                 }
