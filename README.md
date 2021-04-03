@@ -16,6 +16,8 @@ Redit opened in Windows and Linux (WSL) showing the Dracula theme (separate) and
 - Mouse support (dependent on terminal emulator)
 - Undo and redo history
 - [Command palette](#command-palette)
+- Sublime Themes (`.tmTheme`) in `themes` subfolder of [config directory](#customization)
+- Sublime syntaxes (`.sublime-syntax`) in `syntaxes` subfolder of [config directory](#customization)
 
 ### In-Progress
 Roughly listed in order of priority:
@@ -47,3 +49,8 @@ The following commands are implemented:
 - `open [file_path]` - Opens `file_path` in the current editor (gracefully asks to discard changes)
 - `reload` - Reloads the current file from disk (gracefully asks to discard changes)
 - `quit` - Closes the current editor (gracefully asks to discard changes) or closes program on last editor quit
+
+## Customization
+The config folder is `~/.config/redit`.
+Supported settings are in `[config_folder]/settings.toml` with the following keys:
+- `theme = "Solarized (light)"` (pulls from a default list of themes and any in the `themes` subfolder)
