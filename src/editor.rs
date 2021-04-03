@@ -33,8 +33,10 @@ pub enum Movement {
     End,
     PageUp,
     PageDown,
+    ScrollUp(usize),
+    ScrollDown(usize),
     Absolute(usize, usize),
-    AbsoluteScreen(usize, usize),
+    AbsoluteScreen(u16, u16),
     Relative(isize, isize),
 }
 
@@ -125,7 +127,10 @@ impl Widget for &mut Editor {
                 let mut line = h
                     .map(|mut h| h.highlight(raw_line, &self.syntaxes))
                     .unwrap_or_else(|| vec![(default_style, raw_line)]);
-                if self.highlighting && line_number >= min(self.cy, self.hy) && line_number <= max(self.cy, self.hy) {
+                if self.highlighting
+                    && line_number >= min(self.cy, self.hy)
+                    && line_number <= max(self.cy, self.hy)
+                {
                     if self.cy == self.hy {
                         if self.cx < self.hx {
                             line = modify_range(&line, self.cx..self.hx, highlight_style);
@@ -229,16 +234,6 @@ impl Editor {
 
         Ok(())
     }
-
-    // pub fn open(&mut self, file: String) {
-    //     if !self.buffer.is_dirty() || self.confirm_dirty {
-    //         self.prompt_active = true;
-    //         self.prompt_message = Some("File to open".to_string());
-    //     } else {
-    //         self.confirm_dirty = true;
-    //         self.set_message(&"Press Ctrl-o again to open a file");
-    //     }
-    // }
 
     pub fn save(&mut self) -> std::io::Result<bool> {
         if let Some(file_path) = &self.file_path {
@@ -369,6 +364,20 @@ impl Editor {
                     );
                 }
             }
+            Movement::ScrollUp(dy) => {
+                self.row_offset -= min(self.row_offset, dy);
+                if self.cy >= self.row_offset + self.draw_area.height as usize
+                    && self.draw_area.height != 0
+                {
+                    self.cy = self.row_offset + self.draw_area.height as usize - 1;
+                }
+            }
+            Movement::ScrollDown(dy) => {
+                self.row_offset += min(self.buffer.get_line_count() - self.row_offset - 1, dy);
+                if self.cy < self.row_offset {
+                    self.cy = self.row_offset;
+                }
+            }
             // Up
             Movement::Relative(0, dy) if dy < 0 => {
                 let new_cy = self.cy as isize + dy;
@@ -430,6 +439,8 @@ impl Editor {
                 self.cx = min(x, self.buffer.get_line(self.cy).unwrap().get_raw().len());
             }
             Movement::AbsoluteScreen(x, y) => {
+                let x = x as usize;
+                let y = y as usize;
                 let lines = self.buffer.get_line_count();
                 self.cy = min(self.row_offset + y, lines - 1);
                 let row_len = self.buffer.get_line(self.cy).unwrap().get_raw().len();

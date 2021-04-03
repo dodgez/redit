@@ -1,3 +1,4 @@
+use std::cmp::min;
 use std::path::PathBuf;
 
 use clap::{App, Arg};
@@ -57,7 +58,12 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
     let bg_color = TuiColor::Rgb(bg.r, bg.g, bg.b);
     let fg = theme.settings.foreground.unwrap_or(SynColor::WHITE);
     let fg_color = TuiColor::Rgb(fg.r, fg.g, fg.b);
-    let sel = theme.settings.accent.unwrap_or(SynColor {r: 0, g: 0xFF, b: 0xFF, a: 0xFF});
+    let sel = theme.settings.accent.unwrap_or(SynColor {
+        r: 0,
+        g: 0xFF,
+        b: 0xFF,
+        a: 0xFF,
+    });
     let sel_color = TuiColor::Rgb(sel.r, sel.g, sel.b);
 
     let mut editors = vec![Editor::new(ps.clone())];
@@ -66,7 +72,9 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
     e.load_theme(theme.clone());
     if let Some(file) = file {
         if file.starts_with('~') {
-            let path = home_dir().expect("Cannot find home directory").join(file.split_at(2).1);
+            let path = home_dir()
+                .expect("Cannot find home directory")
+                .join(file.split_at(2).1);
             e.open_file(&path.to_str().expect("Failed to use home directory"))?;
         } else {
             e.open_file(&file)?;
@@ -142,37 +150,31 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                     height: height - 1,
                 })?;
             }
-            Event::Mouse(event) => match event.kind {
-                MouseEventKind::ScrollDown => {
-                    e.move_cursor(
-                        Movement::Relative(0, 1),
+            Event::Mouse(event) => {
+                let cur_pos = (event.column, event.row);
+                let cur_pos = (
+                    cur_pos.0 - min(cur_pos.0, e.draw_area.x + 1),
+                    cur_pos.1 - min(cur_pos.1, e.draw_area.y),
+                );
+                match event.kind {
+                    MouseEventKind::ScrollDown => e.move_cursor(
+                        Movement::ScrollDown(2),
                         event.modifiers.intersects(KeyModifiers::SHIFT),
-                    );
-                }
-                MouseEventKind::ScrollUp => {
-                    e.move_cursor(
-                        Movement::Relative(0, -1),
+                    ),
+                    MouseEventKind::ScrollUp => e.move_cursor(
+                        Movement::ScrollUp(2),
                         event.modifiers.intersects(KeyModifiers::SHIFT),
-                    );
-                }
-                MouseEventKind::Down(_) => {
-                    let cur_pos = (event.column as usize, event.row as usize);
-                    e.move_cursor(
-                        Movement::AbsoluteScreen(cur_pos.0 - e.draw_area.x as usize, cur_pos.1 - e.draw_area.y as usize),
+                    ),
+                    MouseEventKind::Down(_) => e.move_cursor(
+                        Movement::AbsoluteScreen(cur_pos.0, cur_pos.1),
                         event.modifiers.intersects(KeyModifiers::SHIFT),
-                    );
+                    ),
+                    MouseEventKind::Drag(_) => {
+                        e.move_cursor(Movement::AbsoluteScreen(cur_pos.0, cur_pos.1), true)
+                    }
+                    _ => continue,
                 }
-                MouseEventKind::Drag(_) => {
-                    let cur_pos = (event.column as usize, event.row as usize);
-                    e.move_cursor(
-                        Movement::AbsoluteScreen(cur_pos.0 - e.draw_area.x as usize, cur_pos.1 - e.draw_area.y as usize),
-                        true,
-                    );
-                }
-                _ => {
-                    continue;
-                }
-            },
+            }
             Event::Key(event) => {
                 let dist = if event.modifiers.intersects(KeyModifiers::CONTROL) {
                     5
@@ -279,7 +281,11 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                     KeyCode::Up => {
                         if prompt.is_none() {
                             e.move_cursor(
-                                Movement::Relative(0, -dist),
+                                if event.modifiers.intersects(KeyModifiers::CONTROL) {
+                                    Movement::ScrollUp(1)
+                                } else {
+                                    Movement::Relative(0, -1)
+                                },
                                 event.modifiers.intersects(KeyModifiers::SHIFT),
                             );
                         }
@@ -287,7 +293,11 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                     KeyCode::Down => {
                         if prompt.is_none() {
                             e.move_cursor(
-                                Movement::Relative(0, dist),
+                                if event.modifiers.intersects(KeyModifiers::CONTROL) {
+                                    Movement::ScrollDown(1)
+                                } else {
+                                    Movement::Relative(0, 1)
+                                },
                                 event.modifiers.intersects(KeyModifiers::SHIFT),
                             );
                         }
@@ -391,9 +401,7 @@ fn edit(file: Option<&str>) -> crossterm::Result<()> {
                             e.write_char(c);
                         }
                     }
-                    _ => {
-                        continue;
-                    }
+                    _ => continue,
                 }
             }
         }
