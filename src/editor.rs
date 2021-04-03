@@ -359,7 +359,7 @@ impl Editor {
                 );
                 if rollback {
                     self.move_cursor(
-                        Movement::Relative(0, 0 - (self.draw_area.height as usize - rel) as isize),
+                        Movement::Relative(0, 1 - (self.draw_area.height as usize - rel) as isize), // 1- so not to go off screen
                         with_highlight,
                     );
                 }
